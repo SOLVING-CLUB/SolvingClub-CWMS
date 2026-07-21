@@ -4,3 +4,4 @@ export * from "./models/enums";
 export * from "./models/member";
 export * from "./models/client";
 export * from "./firebase/app";
+export * from "./firebase/clients";

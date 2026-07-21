@@ -1,8 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    function isSignedIn() { return request.auth != null; }
+    function isMember() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid));
     }
+
+    match /members/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isMember();
+    }
+
+    match /clients/{id}      { allow read, write: if isMember(); }
+    match /projects/{id}     { allow read, write: if isMember(); }
+    match /applications/{id} { allow read, write: if isMember(); }
+    match /tasks/{id}        { allow read, write: if isMember(); }
+    match /documents/{id}    { allow read, write: if isMember(); }
+    match /comments/{id}     { allow read, write: if isMember(); }
   }
 }
