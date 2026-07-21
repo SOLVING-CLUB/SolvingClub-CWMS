@@ -7,6 +7,7 @@ import {
 import { db } from "../db";
 import { fb } from "../firebase";
 import { Comments } from "../tasks/Comments";
+import { Documents } from "../documents/Documents";
 
 function AppTasks({ application }: { application: Application }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -31,7 +32,12 @@ function AppTasks({ application }: { application: Application }) {
               </td>
               <td>
                 <button onClick={() => setOpen(open === t.id ? null : t.id)}>comments</button>
-                {open === t.id && <Comments taskId={t.id} clientId={t.clientId} authorType="client" />}
+                {open === t.id && (
+                  <>
+                    <Comments taskId={t.id} clientId={t.clientId} authorType="client" />
+                    <Documents ownerType="task" ownerId={t.id} clientId={t.clientId} canEdit={false} />
+                  </>
+                )}
               </td>
             </tr>
           ))}

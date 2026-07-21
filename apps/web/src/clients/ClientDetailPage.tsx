@@ -6,6 +6,7 @@ import {
 import { db } from "../db";
 import { ProjectApplications } from "../projects/ProjectApplications";
 import { ClientLoginPanel } from "./ClientLoginPanel";
+import { Documents } from "../documents/Documents";
 
 export function ClientDetailPage() {
   const { clientId = "" } = useParams();
@@ -26,6 +27,7 @@ export function ClientDetailPage() {
     <div>
       <p><Link to="/clients">← Clients</Link></p>
       <ClientLoginPanel clientId={clientId} />
+      <Documents ownerType="client" ownerId={clientId} clientId={clientId} canEdit />
       <h1>Projects</h1>
       <form onSubmit={onAdd} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input placeholder="New project" value={name} onChange={(e) => setName(e.target.value)} />

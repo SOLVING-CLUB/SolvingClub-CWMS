@@ -8,6 +8,7 @@ import { db } from "../db";
 import { fb } from "../firebase";
 import { TaskForm } from "./TaskForm";
 import { Comments } from "./Comments";
+import { Documents } from "../documents/Documents";
 
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
 
@@ -93,7 +94,10 @@ export function TasksPage() {
               </tr>
               {openComments === t.id && (
                 <tr>
-                  <td colSpan={6}><Comments taskId={t.id} clientId={t.clientId} authorType="member" /></td>
+                  <td colSpan={6}>
+                    <Comments taskId={t.id} clientId={t.clientId} authorType="member" />
+                    <Documents ownerType="task" ownerId={t.id} clientId={t.clientId} canEdit />
+                  </td>
                 </tr>
               )}
             </Fragment>
