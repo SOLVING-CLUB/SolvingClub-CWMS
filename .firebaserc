@@ -1,1 +1,6 @@
-{ "projects": { "default": "demo-solvingclub" } }
+{
+  "projects": {
+    "default": "solvingclub-cw-management",
+    "emulator": "demo-solvingclub"
+  }
+}
