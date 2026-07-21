@@ -7,6 +7,7 @@ import { Shell } from "./ui/Shell";
 import { ClientsPage } from "./clients/ClientsPage";
 import { ClientDetailPage } from "./clients/ClientDetailPage";
 import { TasksPage } from "./tasks/TasksPage";
+import { ClientPortal } from "./portal/ClientPortal";
 
 const router = createBrowserRouter([
   {
@@ -20,12 +21,31 @@ const router = createBrowserRouter([
   },
 ]);
 
+type Session = { role: string; clientId?: string };
+
 export function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  useEffect(() => onAuthStateChanged(fb.auth, (u) => { setUser(u); setReady(true); }), []);
+
+  useEffect(() => onAuthStateChanged(fb.auth, async (u) => {
+    setUser(u);
+    if (u) {
+      const token = await u.getIdTokenResult();
+      setSession({
+        role: (token.claims.role as string) ?? "member",
+        clientId: token.claims.clientId as string | undefined,
+      });
+    } else {
+      setSession(null);
+    }
+    setReady(true);
+  }), []);
 
   if (!ready) return <p>Loading…</p>;
-  if (!user) return <LoginPage />;
+  if (!user || !session) return <LoginPage />;
+  if (session.role === "client" && session.clientId) {
+    return <ClientPortal clientId={session.clientId} />;
+  }
   return <RouterProvider router={router} />;
 }

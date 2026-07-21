@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
 import {
   listTasks, createTask, updateTask, deleteTask, listMembers,
@@ -7,6 +7,7 @@ import {
 import { db } from "../db";
 import { fb } from "../firebase";
 import { TaskForm } from "./TaskForm";
+import { Comments } from "./Comments";
 
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
 
@@ -18,6 +19,7 @@ export function TasksPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [openComments, setOpenComments] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setTasks(await listTasks(db, {
@@ -63,28 +65,38 @@ export function TasksPage() {
         </thead>
         <tbody>
           {tasks.map((t) => (
-            <tr key={t.id}>
-              <td>{t.title}</td>
-              <td>
-                <select value={t.status}
-                  onChange={async (e) => { await updateTask(db, t.id, { status: e.target.value as TaskStatus }); await refresh(); }}>
-                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </td>
-              <td>
-                <input type="number" min={1} max={5} value={t.priority} style={{ width: 48 }}
-                  onChange={async (e) => { await updateTask(db, t.id, { priority: Number(e.target.value) }); await refresh(); }} />
-              </td>
-              <td>
-                <select value={t.assigneeUid ?? ""}
-                  onChange={async (e) => { await updateTask(db, t.id, { assigneeUid: e.target.value }); await refresh(); }}>
-                  <option value="">Unassigned</option>
-                  {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-                </select>
-              </td>
-              <td>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}</td>
-              <td><button onClick={async () => { await deleteTask(db, t.id); await refresh(); }}>delete</button></td>
-            </tr>
+            <Fragment key={t.id}>
+              <tr>
+                <td>{t.title}</td>
+                <td>
+                  <select value={t.status}
+                    onChange={async (e) => { await updateTask(db, t.id, { status: e.target.value as TaskStatus }); await refresh(); }}>
+                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <input type="number" min={1} max={5} value={t.priority} style={{ width: 48 }}
+                    onChange={async (e) => { await updateTask(db, t.id, { priority: Number(e.target.value) }); await refresh(); }} />
+                </td>
+                <td>
+                  <select value={t.assigneeUid ?? ""}
+                    onChange={async (e) => { await updateTask(db, t.id, { assigneeUid: e.target.value }); await refresh(); }}>
+                    <option value="">Unassigned</option>
+                    {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+                  </select>
+                </td>
+                <td>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}</td>
+                <td>
+                  <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)}>comments</button>{" "}
+                  <button onClick={async () => { await deleteTask(db, t.id); await refresh(); }}>delete</button>
+                </td>
+              </tr>
+              {openComments === t.id && (
+                <tr>
+                  <td colSpan={6}><Comments taskId={t.id} clientId={t.clientId} authorType="member" /></td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -1,5 +1,5 @@
 import {
-  collection, addDoc, getDocs, query, orderBy, type Firestore,
+  collection, addDoc, getDocs, getDoc, doc, query, orderBy, type Firestore,
 } from "firebase/firestore";
 import { parseClient, type Client } from "../models/client";
 
@@ -24,4 +24,9 @@ export async function listClients(db: Firestore): Promise<Client[]> {
   const q = query(collection(db, "clients"), orderBy("createdAt", "asc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => parseClient({ id: d.id, ...d.data() }));
+}
+
+export async function getClient(db: Firestore, id: string): Promise<Client | null> {
+  const snap = await getDoc(doc(db, "clients", id));
+  return snap.exists() ? parseClient({ id: snap.id, ...snap.data() }) : null;
 }
