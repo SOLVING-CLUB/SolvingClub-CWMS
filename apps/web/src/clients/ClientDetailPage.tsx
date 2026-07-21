@@ -26,24 +26,29 @@ export function ClientDetailPage() {
 
   return (
     <div>
-      <p><Link to="/clients">← Clients</Link></p>
+      <Link to="/clients" className="back-link">← Clients</Link>
+
       <ClientLoginPanel clientId={clientId} />
       <Documents ownerType="client" ownerId={clientId} clientId={clientId} canEdit />
       <InvoicesPanel clientId={clientId} canEdit />
-      <h1>Projects</h1>
-      <form onSubmit={onAdd} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <input placeholder="New project" value={name} onChange={(e) => setName(e.target.value)} />
+
+      <h2>Projects</h2>
+      <form onSubmit={onAdd} className="form-row" style={{ marginBottom: 16 }}>
+        <input placeholder="New project" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
         <button type="submit">Add project</button>
       </form>
+
+      {projects.length === 0 && <p className="empty-state">No projects yet.</p>}
       {projects.map((p) => (
-        <section key={p.id} style={{ border: "1px solid #eee", padding: 12, marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <strong>{p.name}</strong>
+        <section key={p.id} className="card">
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
+            <strong style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{p.name}</strong>
+            <span style={{ flex: 1 }} />
             <button onClick={async () => {
               const next = prompt("Rename project", p.name);
               if (next && next.trim()) { await updateProject(db, p.id, { name: next.trim() }); await refresh(); }
-            }}>rename</button>
-            <button onClick={async () => { await deleteProject(db, p.id); await refresh(); }}>delete</button>
+            }}>Rename</button>
+            <button onClick={async () => { await deleteProject(db, p.id); await refresh(); }}>Delete</button>
           </div>
           <ProjectApplications projectId={p.id} clientId={clientId} />
         </section>

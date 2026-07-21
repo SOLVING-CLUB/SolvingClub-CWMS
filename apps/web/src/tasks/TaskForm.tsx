@@ -25,9 +25,9 @@ export function TaskForm(
   }
 
   return (
-    <form onSubmit={submit} style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-      <input placeholder="Task title" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <input type="number" min={1} max={5} value={priority}
+    <form onSubmit={submit} className="card form-row" style={{ marginBottom: 16 }}>
+      <input placeholder="Task title" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+      <input type="number" min={1} max={5} value={priority} className="mono" style={{ width: 56 }}
         onChange={(e) => setPriority(Number(e.target.value))} title="Priority (1=high)" />
       <select value={assigneeUid} onChange={(e) => setAssigneeUid(e.target.value)}>
         <option value="">Unassigned</option>

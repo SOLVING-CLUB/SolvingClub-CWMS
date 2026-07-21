@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getClient, type Client } from "@solvingclub/core";
 import { db } from "../db";
 import { createClientUser, resetClientPassword } from "../functions";
+import { StatusTag } from "../ui/StatusTag";
 
 export function ClientLoginPanel({ clientId }: { clientId: string }) {
   const [client, setClient] = useState<Client | null>(null);
@@ -38,22 +39,23 @@ export function ClientLoginPanel({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div style={{ border: "1px solid #eee", padding: 12, marginBottom: 16 }}>
-      <strong>Client login</strong>{" "}
-      {client?.loginEmail
-        ? (
-          <>
-            <span>— {client.loginEmail}</span>{" "}
-            <button onClick={onReset}>reset password</button>
-          </>
-        )
-        : (
-          <>
-            <span>— none yet</span>{" "}
-            <button onClick={onCreate}>create login</button>
-          </>
-        )}
-      {msg && <p role="status">{msg}</p>}
+    <div className="card" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span className="eyebrow" style={{ margin: 0 }}>Client login</span>
+      {client?.loginEmail ? (
+        <>
+          <StatusTag tone="done">Active</StatusTag>
+          <span className="mono muted" style={{ fontSize: 12 }}>{client.loginEmail}</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={onReset}>Reset password</button>
+        </>
+      ) : (
+        <>
+          <StatusTag tone="neutral">None yet</StatusTag>
+          <span style={{ flex: 1 }} />
+          <button onClick={onCreate}>Create login</button>
+        </>
+      )}
+      {msg && <p role="status" className="muted" style={{ fontSize: 12, marginLeft: 8 }}>{msg}</p>}
     </div>
   );
 }

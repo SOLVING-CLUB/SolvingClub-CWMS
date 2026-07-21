@@ -24,15 +24,24 @@ export function Comments(
   }
 
   return (
-    <div style={{ marginTop: 4, paddingLeft: 8, borderLeft: "2px solid #eee" }}>
-      <ul style={{ margin: "4px 0" }}>
-        {comments.map((c) => (
-          <li key={c.id}><strong>{c.authorType}</strong>: {c.body}</li>
-        ))}
-        {comments.length === 0 && <li style={{ color: "#999" }}>No comments yet.</li>}
-      </ul>
-      <form onSubmit={onAdd} style={{ display: "flex", gap: 8 }}>
-        <input placeholder="Add a comment" value={body} onChange={(e) => setBody(e.target.value)} />
+    <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: "2px solid var(--line-strong)" }}>
+      <div className="eyebrow">Discussion</div>
+      {comments.length === 0 ? (
+        <p className="empty-state" style={{ margin: "0 0 8px" }}>No comments yet.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+          {comments.map((c) => (
+            <div key={c.id} style={{ fontSize: 13 }}>
+              <span className="mono muted" style={{ fontSize: 10, textTransform: "uppercase", marginRight: 6 }}>
+                {c.authorType}
+              </span>
+              {c.body}
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={onAdd} className="form-row">
+        <input placeholder="Add a comment" value={body} onChange={(e) => setBody(e.target.value)} style={{ flex: 1 }} />
         <button type="submit">Comment</button>
       </form>
     </div>

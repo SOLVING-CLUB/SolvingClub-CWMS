@@ -25,18 +25,32 @@ export function ClientsPage() {
 
   return (
     <div>
-      <h1>Clients</h1>
-      <form onSubmit={onAdd} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <div className="eyebrow">Clients</div>
+      <h1 style={{ marginBottom: 20 }}>{clients.length} client{clients.length === 1 ? "" : "s"}</h1>
+
+      <form onSubmit={onAdd} className="form-row" style={{ marginBottom: 20 }}>
+        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
+        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ flex: 1 }} />
         <button type="submit">Add client</button>
       </form>
-      {error && <p role="alert">{error}</p>}
-      <ul>
-        {clients.map((c) => (
-          <li key={c.id}><Link to={`/clients/${c.id}`}>{c.name}</Link> — {c.email}</li>
-        ))}
-      </ul>
+      {error && <p role="alert" style={{ color: "var(--danger)", fontSize: 12 }}>{error}</p>}
+
+      {clients.length === 0 ? (
+        <p className="empty-state">No clients yet — add your first one above.</p>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          {clients.map((c, i) => (
+            <Link key={c.id} to={`/clients/${c.id}`} style={{
+              display: "flex", alignItems: "baseline", gap: 12, padding: "12px 18px",
+              borderBottom: i < clients.length - 1 ? "1px solid var(--line)" : "none",
+              color: "var(--ink)",
+            }}>
+              <span style={{ fontWeight: 600 }}>{c.name}</span>
+              <span className="muted mono" style={{ fontSize: 12 }}>{c.email}</span>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

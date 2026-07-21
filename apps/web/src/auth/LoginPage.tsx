@@ -13,18 +13,37 @@ export function LoginPage() {
     try {
       await signInWithEmailAndPassword(fb.auth, email, password);
     } catch {
-      setError("Invalid email or password.");
+      setError("That email or password doesn't match our records.");
     }
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <h1>SolvingClub — Sign in</h1>
-      <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <input type="password" placeholder="Password" value={password}
-        onChange={(e) => setPassword(e.target.value)} />
-      <button type="submit">Sign in</button>
-      {error && <p role="alert">{error}</p>}
-    </form>
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "var(--bg)", padding: 24,
+    }}>
+      <form onSubmit={onSubmit} className="card" style={{ width: 340 }}>
+        <div className="wordmark" style={{ marginBottom: 20 }}>SolvingClub</div>
+        <div className="eyebrow">Sign in</div>
+        <h1 style={{ fontSize: 18, marginBottom: 18 }}>Client Management System</h1>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input placeholder="Email" value={email} autoComplete="username"
+            onChange={(e) => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" value={password} autoComplete="current-password"
+            onChange={(e) => setPassword(e.target.value)} />
+          <button type="submit" style={{ width: "100%", marginTop: 4 }}>Sign in</button>
+        </div>
+
+        {error && (
+          <p role="alert" style={{
+            marginTop: 12, marginBottom: 0, fontSize: 12, color: "var(--danger)",
+            background: "var(--danger-wash)", padding: "8px 10px", borderRadius: "var(--radius-sm)",
+          }}>
+            {error}
+          </p>
+        )}
+      </form>
+    </div>
   );
 }

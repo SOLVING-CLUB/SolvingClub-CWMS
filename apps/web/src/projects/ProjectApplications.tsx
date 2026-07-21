@@ -20,20 +20,20 @@ export function ProjectApplications({ projectId, clientId }: { projectId: string
   }
 
   return (
-    <div style={{ marginLeft: 16 }}>
-      <form onSubmit={onAdd} style={{ display: "flex", gap: 8 }}>
-        <input placeholder="New application" value={name} onChange={(e) => setName(e.target.value)} />
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+      <form onSubmit={onAdd} className="form-row" style={{ marginBottom: apps.length ? 8 : 0 }}>
+        <input placeholder="New application" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
         <button type="submit">Add app</button>
       </form>
-      <ul>
-        {apps.map((a) => (
-          <li key={a.id}>
-            <Link to={`/clients/${clientId}/apps/${a.id}`} state={{ projectId, clientId }}>{a.name}</Link>
-            {" "}
-            <button onClick={async () => { await deleteApplication(db, a.id); await refresh(); }}>delete</button>
-          </li>
-        ))}
-      </ul>
+      {apps.map((a) => (
+        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+          <Link to={`/clients/${clientId}/apps/${a.id}`} state={{ projectId, clientId }} style={{ fontWeight: 500 }}>
+            {a.name}
+          </Link>
+          <span style={{ flex: 1 }} />
+          <button onClick={async () => { await deleteApplication(db, a.id); await refresh(); }}>Delete</button>
+        </div>
+      ))}
     </div>
   );
 }

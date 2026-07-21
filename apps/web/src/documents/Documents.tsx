@@ -70,32 +70,46 @@ export function Documents(
   }
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <em>Documents</em>
-      <ul style={{ margin: "4px 0" }}>
-        {docs.map((d) => (
-          <li key={d.id}>
-            <a href={safeHref(d.url)} target="_blank" rel="noreferrer">{d.label}</a>
-            {d.kind === "managed" && <span style={{ color: "#999" }}> (Drive)</span>}
-            {canEdit && (
-              <> <button onClick={async () => { await deleteDocument(db, d.id); await refresh(); }}>remove</button></>
-            )}
-          </li>
-        ))}
-        {docs.length === 0 && <li style={{ color: "#999" }}>No documents.</li>}
-      </ul>
+    <div style={{ marginTop: 8 }}>
+      <div className="eyebrow">Documents</div>
+      {docs.length === 0 ? (
+        <p className="empty-state" style={{ margin: "0 0 8px" }}>No documents.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+          {docs.map((d) => (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <a href={safeHref(d.url)} target="_blank" rel="noreferrer">{d.label}</a>
+              {d.kind === "managed" && (
+                <span className="mono muted" style={{ fontSize: 10, textTransform: "uppercase" }}>drive</span>
+              )}
+              {canEdit && (
+                <button onClick={async () => { await deleteDocument(db, d.id); await refresh(); }} style={{ marginLeft: "auto" }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {canEdit && (
         <>
-          <form onSubmit={onAddLink} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-            <input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
-            <input placeholder="Drive / file URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+          <form onSubmit={onAddLink} className="form-row" style={{ marginBottom: 6 }}>
+            <input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} style={{ flex: 1 }} />
+            <input placeholder="Drive / file URL" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 2 }} />
             <button type="submit">Attach link</button>
           </form>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="form-row">
             <input ref={fileInputRef} type="file" onChange={onFileChosen} disabled={uploading} />
-            {uploading && <span>Uploading…</span>}
+            {uploading && <span className="muted" style={{ fontSize: 12 }}>Uploading…</span>}
           </div>
-          {error && <p role="alert">{error}</p>}
+          {error && (
+            <p role="alert" style={{
+              fontSize: 12, color: "var(--danger)", background: "var(--danger-wash)",
+              padding: "6px 10px", borderRadius: "var(--radius-sm)", marginTop: 6,
+            }}>
+              {error}
+            </p>
+          )}
         </>
       )}
     </div>

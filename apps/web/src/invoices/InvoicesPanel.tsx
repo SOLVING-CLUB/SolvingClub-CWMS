@@ -6,8 +6,12 @@ import {
 import { db } from "../db";
 import { fb } from "../firebase";
 import { InvoiceForm } from "./InvoiceForm";
+import { StatusTag, StatusSelect, type StatusTone } from "../ui/StatusTag";
 
 const STATUSES: InvoiceStatus[] = ["draft", "sent", "paid", "overdue", "void"];
+const STATUS_TONE: Record<InvoiceStatus, StatusTone> = {
+  draft: "neutral", sent: "progress", paid: "done", overdue: "blocked", void: "neutral",
+};
 
 export function InvoicesPanel({ clientId, canEdit }: { clientId: string; canEdit: boolean }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -16,7 +20,7 @@ export function InvoicesPanel({ clientId, canEdit }: { clientId: string; canEdit
   useEffect(() => { refresh(); }, [clientId]);
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div>
       <h2>Invoices</h2>
       {canEdit && (
         <InvoiceForm onSubmit={async (v) => {
@@ -28,30 +32,41 @@ export function InvoicesPanel({ clientId, canEdit }: { clientId: string; canEdit
           await refresh();
         }} />
       )}
-      <table width="100%">
-        <thead>
-          <tr><th align="left">Number</th><th>Status</th><th>Total</th><th>Issued</th><th>Due</th></tr>
-        </thead>
-        <tbody>
-          {invoices.map((inv) => (
-            <tr key={inv.id}>
-              <td>{inv.number}</td>
-              <td>
-                {canEdit ? (
-                  <select value={inv.status}
-                    onChange={async (e) => { await updateInvoiceStatus(db, inv.id, e.target.value as InvoiceStatus); await refresh(); }}>
-                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                ) : inv.status}
-              </td>
-              <td>{inv.currency} {inv.total.toFixed(2)}</td>
-              <td>{new Date(inv.issueDate).toLocaleDateString()}</td>
-              <td>{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : "—"}</td>
-            </tr>
-          ))}
-          {invoices.length === 0 && <tr><td colSpan={5}>No invoices yet.</td></tr>}
-        </tbody>
-      </table>
+
+      {invoices.length === 0 ? (
+        <p className="empty-state">No invoices yet.</p>
+      ) : (
+        <div className="card" style={{ padding: 0, marginBottom: 16 }}>
+          <table>
+            <thead>
+              <tr>
+                <th style={{ paddingLeft: 18 }}>Number</th><th>Status</th><th>Total</th>
+                <th>Issued</th><th style={{ paddingRight: 18 }}>Due</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td className="mono" style={{ paddingLeft: 18, fontWeight: 500 }}>{inv.number}</td>
+                  <td>
+                    {canEdit ? (
+                      <StatusSelect value={inv.status} tone={STATUS_TONE[inv.status]} options={STATUSES}
+                        onChange={async (v) => { await updateInvoiceStatus(db, inv.id, v); await refresh(); }} />
+                    ) : (
+                      <StatusTag tone={STATUS_TONE[inv.status]}>{inv.status}</StatusTag>
+                    )}
+                  </td>
+                  <td className="mono">{inv.currency} {inv.total.toFixed(2)}</td>
+                  <td className="mono muted" style={{ fontSize: 12 }}>{new Date(inv.issueDate).toLocaleDateString()}</td>
+                  <td className="mono muted" style={{ fontSize: 12, paddingRight: 18 }}>
+                    {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

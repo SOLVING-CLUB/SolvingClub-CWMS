@@ -20,27 +20,45 @@ export function NotificationBell(
 
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)}>
-        Notifications{unread > 0 ? ` (${unread})` : ""}
+      <button onClick={() => setOpen((o) => !o)} style={{ position: "relative" }}>
+        Notifications
+        {unread > 0 && (
+          <span className="mono" style={{
+            marginLeft: 6, background: "var(--accent)", color: "var(--accent-ink)",
+            fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 8,
+          }}>
+            {unread}
+          </span>
+        )}
       </button>
       {open && (
-        <div style={{
-          position: "absolute", right: 0, top: "100%", background: "white", color: "black",
-          border: "1px solid #ccc", padding: 8, width: 280, zIndex: 10,
+        <div className="card" style={{
+          position: "absolute", right: 0, top: "calc(100% + 6px)", width: 300, zIndex: 10, padding: 0,
+          maxHeight: 360, overflowY: "auto",
         }}>
-          {items.length === 0 && <p>No notifications.</p>}
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {items.map((n) => (
-              <li key={n.id} style={{ padding: "4px 0", borderBottom: "1px solid #eee", opacity: n.read ? 0.6 : 1 }}>
-                <div>{n.title}</div>
+          {items.length === 0 ? (
+            <p className="empty-state" style={{ padding: 14 }}>No notifications.</p>
+          ) : (
+            items.map((n, i) => (
+              <div key={n.id} style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+                borderBottom: i < items.length - 1 ? "1px solid var(--line)" : "none",
+                opacity: n.read ? 0.55 : 1,
+              }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: n.read ? "transparent" : "var(--accent)", flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 13, flex: 1 }}>{n.title}</span>
                 {!n.read && (
-                  <button onClick={async () => { await markNotificationRead(db, n.id); await refresh(); }}>
-                    mark read
+                  <button onClick={async () => { await markNotificationRead(db, n.id); await refresh(); }}
+                    style={{ fontSize: 11, padding: "3px 7px", flexShrink: 0 }}>
+                    Mark read
                   </button>
                 )}
-              </li>
-            ))}
-          </ul>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

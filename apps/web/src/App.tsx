@@ -42,7 +42,16 @@ export function App() {
     setReady(true);
   }), []);
 
-  if (!ready) return <p>Loading…</p>;
+  if (!ready) {
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "var(--bg)", color: "var(--ink-faint)", fontFamily: "var(--font-mono)", fontSize: 12,
+      }}>
+        loading…
+      </div>
+    );
+  }
   if (!user || !session) return <LoginPage />;
   if (session.role === "client" && session.clientId) {
     return <ClientPortal clientId={session.clientId} />;
