@@ -605,8 +605,12 @@ type NewClient = Omit<Client, "id" | "createdAt" | "status"> & {
 export async function createClient(db: Firestore, input: NewClient): Promise<Client> {
   const createdAt = Date.now();
   const status = input.status ?? "active";
+  // Omit `phone` when absent — never store null. clientSchema's
+  // `phone: z.string().optional()` accepts undefined/absent, not null.
   const ref = await addDoc(collection(db, "clients"), {
-    name: input.name, email: input.email, phone: input.phone ?? null,
+    name: input.name,
+    email: input.email,
+    ...(input.phone !== undefined && { phone: input.phone }),
     status, createdAt,
   });
   return parseClient({ id: ref.id, ...input, status, createdAt });
