@@ -6,6 +6,17 @@ import {
 import { db } from "../db";
 import { fb } from "../firebase";
 
+// Defense-in-depth: even though the schema rejects non-http(s) URLs at write
+// time, never render a stored `url` as href without re-checking its scheme.
+function safeHref(url: string): string {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "https:" || protocol === "http:" ? url : "#";
+  } catch {
+    return "#";
+  }
+}
+
 export function Documents(
   { ownerType, ownerId, clientId, canEdit }:
   { ownerType: OwnerType; ownerId: string; clientId: string; canEdit: boolean },
@@ -33,7 +44,7 @@ export function Documents(
       <ul style={{ margin: "4px 0" }}>
         {docs.map((d) => (
           <li key={d.id}>
-            <a href={d.url} target="_blank" rel="noreferrer">{d.label}</a>
+            <a href={safeHref(d.url)} target="_blank" rel="noreferrer">{d.label}</a>
             {canEdit && (
               <> <button onClick={async () => { await deleteDocument(db, d.id); await refresh(); }}>remove</button></>
             )}
