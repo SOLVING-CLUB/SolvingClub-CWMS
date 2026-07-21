@@ -4,3 +4,6 @@ dist/
 .env.*
 functions/serviceAccount*.json
 .firebase/
+*-debug.log
+firestore-debug.log
+ui-debug.log
