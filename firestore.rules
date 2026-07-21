@@ -74,5 +74,15 @@ service cloud.firestore {
         || (isOwnClientNotification(resource.data)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
     }
+
+    // Sequence counters (e.g. invoice numbering) — internal-only.
+    match /counters/{id} {
+      allow read, write: if isMember();
+    }
+
+    match /invoices/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow write: if isMember();
+    }
   }
 }

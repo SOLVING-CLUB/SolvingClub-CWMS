@@ -18,6 +18,16 @@ async function seed() {
     await setDoc(doc(d, "notifications/n2"), {
       recipientType: "client", recipientId: "c2", title: "For c2", read: false, createdAt: 1,
     });
+    await setDoc(doc(d, "invoices/i1"), {
+      clientId: "c1", number: "INV-0001", status: "draft",
+      lineItems: [{ description: "Work", quantity: 1, unitPrice: 100 }],
+      currency: "USD", total: 100, issueDate: 1, createdBy: "u1", createdAt: 1,
+    });
+    await setDoc(doc(d, "invoices/i2"), {
+      clientId: "c2", number: "INV-0002", status: "draft",
+      lineItems: [{ description: "Work", quantity: 1, unitPrice: 100 }],
+      currency: "USD", total: 100, issueDate: 1, createdBy: "u1", createdAt: 1,
+    });
   });
 }
 
@@ -61,5 +71,12 @@ describe("client-scoped rules", () => {
     await assertFails(getDoc(doc(db, "notifications/n2")));
     await assertSucceeds(updateDoc(doc(db, "notifications/n1"), { read: true }));
     await assertFails(updateDoc(doc(db, "notifications/n1"), { title: "hacked" }));
+  });
+
+  it("reads its own invoice but not another client's, and cannot write invoices", async () => {
+    const db = await clientDb("client1", "c1");
+    await assertSucceeds(getDoc(doc(db, "invoices/i1")));
+    await assertFails(getDoc(doc(db, "invoices/i2")));
+    await assertFails(updateDoc(doc(db, "invoices/i1"), { status: "paid" }));
   });
 });
