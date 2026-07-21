@@ -6,6 +6,8 @@ export const clientSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional(),
   driveFolderId: z.string().optional(),
+  authUid: z.string().optional(),
+  loginEmail: z.string().email().optional(),
   status: z.enum(["active", "archived"]).default("active"),
   createdAt: z.number(),
 });
