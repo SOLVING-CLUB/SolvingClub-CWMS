@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
-  listProjectsByClient, listApplicationsByProject, listTasks, updateTask,
+  listProjectsByClient, listApplicationsByProject, listTasks, updateTask, listClientNotifications,
   type Project, type Application, type Task,
 } from "@solvingclub/core";
 import { db } from "../db";
 import { fb } from "../firebase";
 import { Comments } from "../tasks/Comments";
 import { Documents } from "../documents/Documents";
+import { NotificationBell } from "../notifications/NotificationBell";
 
 function AppTasks({ application }: { application: Application }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -67,6 +68,7 @@ export function ClientPortal({ clientId }: { clientId: string }) {
       <header style={{ display: "flex", gap: 12, padding: 12, borderBottom: "1px solid #ddd" }}>
         <strong>SolvingClub — Client Portal</strong>
         <span style={{ flex: 1 }} />
+        <NotificationBell fetchNotifications={() => listClientNotifications(db, clientId)} />
         <button onClick={() => signOut(fb.auth)}>Sign out</button>
       </header>
       <main style={{ padding: 16 }}>
