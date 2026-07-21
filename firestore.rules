@@ -62,5 +62,17 @@ service cloud.firestore {
             && request.resource.data.authorType == 'client');
       allow update, delete: if isMember();
     }
+
+    match /notifications/{id} {
+      function isOwnClientNotification(data) {
+        return data.recipientType == 'client' && ownsClient(data.recipientId);
+      }
+      allow read: if isMember() || isOwnClientNotification(resource.data);
+      allow create, delete: if isMember();
+      // Members may change anything; a client may only mark their own notification read.
+      allow update: if isMember()
+        || (isOwnClientNotification(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
+    }
   }
 }
