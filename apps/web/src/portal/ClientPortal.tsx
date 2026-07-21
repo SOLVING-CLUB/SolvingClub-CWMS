@@ -9,6 +9,7 @@ import { fb } from "../firebase";
 import { Comments } from "../tasks/Comments";
 import { Documents } from "../documents/Documents";
 import { NotificationBell } from "../notifications/NotificationBell";
+import { InvoicesPanel } from "../invoices/InvoicesPanel";
 
 function AppTasks({ application }: { application: Application }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -72,6 +73,7 @@ export function ClientPortal({ clientId }: { clientId: string }) {
         <button onClick={() => signOut(fb.auth)}>Sign out</button>
       </header>
       <main style={{ padding: 16 }}>
+        <InvoicesPanel clientId={clientId} canEdit={false} />
         <h1>Your projects</h1>
         {projects.length === 0 && <p>No projects yet.</p>}
         {projects.map((p) => <ProjectBlock key={p.id} project={p} />)}
