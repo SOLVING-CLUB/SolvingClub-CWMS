@@ -3,21 +3,64 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isSignedIn() { return request.auth != null; }
+
     function isMember() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/members/$(request.auth.uid));
     }
 
+    function isClient() {
+      return isSignedIn() && request.auth.token.role == 'client';
+    }
+
+    function ownsClient(cid) {
+      return isClient() && request.auth.token.clientId == cid;
+    }
+
+    // Org members are internal-only.
     match /members/{uid} {
-      allow read: if isSignedIn();
+      allow read: if isMember();
       allow write: if isMember();
     }
 
-    match /clients/{id}      { allow read, write: if isMember(); }
-    match /projects/{id}     { allow read, write: if isMember(); }
-    match /applications/{id} { allow read, write: if isMember(); }
-    match /tasks/{id}        { allow read, write: if isMember(); }
-    match /documents/{id}    { allow read, write: if isMember(); }
-    match /comments/{id}     { allow read, write: if isMember(); }
+    // A client can read their own client record; members manage all.
+    match /clients/{id} {
+      allow read: if isMember() || ownsClient(id);
+      allow write: if isMember();
+    }
+
+    match /projects/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow write: if isMember();
+    }
+
+    match /applications/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow write: if isMember();
+    }
+
+    match /tasks/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow create, delete: if isMember();
+      // Members may change anything; a client may only reprioritize their own tasks.
+      allow update: if isMember()
+        || (ownsClient(resource.data.clientId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['priority', 'order']));
+    }
+
+    match /documents/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow write: if isMember();
+    }
+
+    match /comments/{id} {
+      allow read: if isMember() || ownsClient(resource.data.clientId);
+      // A client may add their own comment on their own task; members may write freely.
+      allow create: if isMember()
+        || (ownsClient(request.resource.data.clientId)
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorType == 'client');
+      allow update, delete: if isMember();
+    }
   }
 }

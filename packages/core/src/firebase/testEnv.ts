@@ -34,3 +34,11 @@ export async function memberDb(uid: string): Promise<Firestore> {
   const env = await getTestEnv();
   return env.authenticatedContext(uid).firestore() as unknown as Firestore;
 }
+
+/** Firestore acting as a signed-in client (custom claims role=client, clientId). */
+export async function clientDb(uid: string, clientId: string): Promise<Firestore> {
+  const env = await getTestEnv();
+  return env
+    .authenticatedContext(uid, { role: "client", clientId })
+    .firestore() as unknown as Firestore;
+}
