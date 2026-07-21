@@ -7,3 +7,5 @@ functions/serviceAccount*.json
 *-debug.log
 firestore-debug.log
 ui-debug.log
+!.env.example
+!**/.env.example
