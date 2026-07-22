@@ -431,13 +431,20 @@ git commit -m "chore: add firebase config, emulator suite, and core init module"
 
 ---
 
-### Task 4: Client data-access against the emulator
+### Task 4: Client data-access, tested as an authenticated member
+
+This task installs the real member-scoped security rules and verifies the client
+data-access layer works **through** those rules while signed in as a member
+(using `@firebase/rules-unit-testing` to seed a member and get an authenticated
+Firestore). Task 6 then adds the negative rule-behavior tests (deny paths).
 
 **Files:**
 - Create: `packages/core/src/firebase/clients.ts`
-- Create: `packages/core/src/firebase/testUtils.ts`
+- Create: `packages/core/src/firebase/testEnv.ts`
+- Modify: `firestore.rules` (replace deny-all with real member rules)
 - Modify: `packages/core/src/index.ts`
 - Modify: `packages/core/vitest.config.ts`
+- Modify: `packages/core/package.json` (add `@firebase/rules-unit-testing` dev dep)
 - Test: `packages/core/src/firebase/clients.test.ts`
 
 **Interfaces:**
@@ -445,9 +452,47 @@ git commit -m "chore: add firebase config, emulator suite, and core init module"
 - Produces:
   - `createClient(db, input: Omit<Client,"id"|"createdAt"|"status"> & { status?: Client["status"] }): Promise<Client>` — writes to `clients`, returns the stored client with generated id + createdAt.
   - `listClients(db): Promise<Client[]>` — reads all clients ordered by `createdAt`.
-  - `getTestDb(): Firestore` (test helper connecting to the emulator).
+  - `getTestEnv(): Promise<RulesTestEnvironment>` — shared rules-unit-testing env (reads `firestore.rules`). Reused by Task 6.
+  - `seedMember(uid): Promise<void>` — writes a `members/{uid}` doc with rules disabled, so an authenticated context for `uid` passes `isMember()`. Reused by Task 6.
+  - `memberDb(uid): Promise<Firestore>` — Firestore acting as signed-in member `uid`.
 
-- [ ] **Step 1: Configure Vitest to require the emulator env**
+- [ ] **Step 1: Add the rules-testing dev dependency**
+
+Run:
+```bash
+pnpm -C packages/core add -D @firebase/rules-unit-testing@^4.0.0
+```
+
+- [ ] **Step 2: Install the real member security rules**
+
+Replace `firestore.rules`:
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isMember() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
+    match /members/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isMember();
+    }
+
+    match /clients/{id}      { allow read, write: if isMember(); }
+    match /projects/{id}     { allow read, write: if isMember(); }
+    match /applications/{id} { allow read, write: if isMember(); }
+    match /tasks/{id}        { allow read, write: if isMember(); }
+    match /documents/{id}    { allow read, write: if isMember(); }
+    match /comments/{id}     { allow read, write: if isMember(); }
+  }
+}
+```
+
+- [ ] **Step 3: Configure Vitest for the emulator**
 
 Replace `packages/core/vitest.config.ts`:
 ```ts
@@ -456,49 +501,79 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    testTimeout: 15000,
+    testTimeout: 20000,
     env: { FIRESTORE_EMULATOR_HOST: "localhost:8080" },
+    // Emulator-backed test files share one Firestore namespace, so a
+    // clearFirestore() in one file must not race another file's seeded
+    // data. Run test files sequentially to keep them isolated.
+    fileParallelism: false,
   },
 });
 ```
 
-- [ ] **Step 2: Write the test helper**
+- [ ] **Step 4: Write the shared test-env helper**
 
-`packages/core/src/firebase/testUtils.ts`:
+`packages/core/src/firebase/testEnv.ts` (note: `firestore.rules` is read relative to `packages/core`, the cwd when tests run via `pnpm -C packages/core test`):
 ```ts
-import { initFirebase, connectToEmulators, type FirebaseServices } from "./app";
+import { readFileSync } from "node:fs";
+import {
+  initializeTestEnvironment, type RulesTestEnvironment,
+} from "@firebase/rules-unit-testing";
+import { doc, setDoc, type Firestore } from "firebase/firestore";
 
-let services: FirebaseServices | undefined;
+let envPromise: Promise<RulesTestEnvironment> | undefined;
 
-export function getTestServices(): FirebaseServices {
-  if (!services) {
-    services = initFirebase({ projectId: "demo-test", apiKey: "fake", appId: "fake" });
-    connectToEmulators(services);
+export function getTestEnv(): Promise<RulesTestEnvironment> {
+  if (!envPromise) {
+    envPromise = initializeTestEnvironment({
+      projectId: "demo-rules-test",
+      firestore: {
+        rules: readFileSync("../../firestore.rules", "utf8"),
+        host: "localhost",
+        port: 8080,
+      },
+    });
   }
-  return services;
+  return envPromise;
+}
+
+export async function seedMember(uid: string): Promise<void> {
+  const env = await getTestEnv();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore() as unknown as Firestore, `members/${uid}`), {
+      uid, name: "Test", email: `${uid}@test.com`,
+      role: "owner", status: "active", createdAt: 1,
+    });
+  });
+}
+
+export async function memberDb(uid: string): Promise<Firestore> {
+  const env = await getTestEnv();
+  return env.authenticatedContext(uid).firestore() as unknown as Firestore;
 }
 ```
 
-- [ ] **Step 3: Write the failing test**
+- [ ] **Step 5: Write the failing test**
 
 `packages/core/src/firebase/clients.test.ts`:
 ```ts
-import { describe, it, expect, beforeEach } from "vitest";
-import { collection, getDocs, deleteDoc } from "firebase/firestore";
-import { getTestServices } from "./testUtils";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { getTestEnv, seedMember, memberDb } from "./testEnv";
 import { createClient, listClients } from "./clients";
 
-const { db } = getTestServices();
+describe("client data-access (as authenticated member)", () => {
+  beforeEach(async () => {
+    const env = await getTestEnv();
+    await env.clearFirestore();
+    await seedMember("u1");
+  });
+  afterAll(async () => {
+    const env = await getTestEnv();
+    await env.cleanup();
+  });
 
-async function clearClients() {
-  const snap = await getDocs(collection(db, "clients"));
-  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-}
-
-describe("client data-access", () => {
-  beforeEach(clearClients);
-
-  it("creates and lists a client", async () => {
+  it("creates and lists a client under real member rules", async () => {
+    const db = await memberDb("u1");
     const created = await createClient(db, { name: "Acme", email: "a@acme.com" });
     expect(created.id).toBeTruthy();
     expect(created.status).toBe("active");
@@ -510,15 +585,15 @@ describe("client data-access", () => {
 });
 ```
 
-- [ ] **Step 4: Run to verify failure**
+- [ ] **Step 6: Run to verify failure**
 
-Run (emulator must be up):
+Run:
 ```bash
-pnpm exec firebase emulators:exec --only firestore "pnpm -C packages/core test clients"
+pnpm exec firebase emulators:exec --only firestore --project demo-solvingclub "pnpm -C packages/core test clients"
 ```
 Expected: FAIL — cannot find `./clients`.
 
-- [ ] **Step 5: Implement the data-access module**
+- [ ] **Step 7: Implement the data-access module**
 
 `packages/core/src/firebase/clients.ts`:
 ```ts
@@ -534,8 +609,12 @@ type NewClient = Omit<Client, "id" | "createdAt" | "status"> & {
 export async function createClient(db: Firestore, input: NewClient): Promise<Client> {
   const createdAt = Date.now();
   const status = input.status ?? "active";
+  // Omit `phone` when absent — never store null. clientSchema's
+  // `phone: z.string().optional()` accepts undefined/absent, not null.
   const ref = await addDoc(collection(db, "clients"), {
-    name: input.name, email: input.email, phone: input.phone ?? null,
+    name: input.name,
+    email: input.email,
+    ...(input.phone !== undefined && { phone: input.phone }),
     status, createdAt,
   });
   return parseClient({ id: ref.id, ...input, status, createdAt });
@@ -548,26 +627,27 @@ export async function listClients(db: Firestore): Promise<Client[]> {
 }
 ```
 
-- [ ] **Step 6: Export the module**
+- [ ] **Step 8: Export the data-access module**
 
 Append to `packages/core/src/index.ts`:
 ```ts
 export * from "./firebase/clients";
 ```
+(Do NOT export `testEnv` — it is test-only.)
 
-- [ ] **Step 7: Run to verify pass**
+- [ ] **Step 9: Run to verify pass**
 
 Run:
 ```bash
-pnpm exec firebase emulators:exec --only firestore "pnpm -C packages/core test clients"
+pnpm exec firebase emulators:exec --only firestore --project demo-solvingclub "pnpm -C packages/core test clients"
 ```
-Expected: PASS.
+Expected: PASS — the member-authenticated create + list succeed under the real rules.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add -A
-git commit -m "feat(core): client data-access with emulator tests"
+git commit -m "feat(core): member-scoped rules + client data-access tested as member"
 ```
 
 ---
@@ -762,110 +842,73 @@ git commit -m "feat(web): app shell with member email/password login"
 
 ---
 
-### Task 6: Member security rules + rule tests
+### Task 6: Member rule-behavior tests (deny/allow paths)
+
+The real member rules were installed in Task 4. This task adds the negative and
+positive rule-behavior coverage: unauthenticated is denied, a signed-in
+non-member is denied, and a seeded member is allowed. It reuses the shared
+`testEnv` helper from Task 4 — no new rules authoring, no new dependency.
 
 **Files:**
-- Modify: `firestore.rules`
 - Create: `packages/core/src/firebase/rules.test.ts`
-- Modify: `packages/core/package.json` (add rules-testing dev dep)
 
 **Interfaces:**
-- Consumes: emulator (Task 3), `clients` collection (Task 4).
-- Produces: security rules where any signed-in member can read/write org collections and unauthenticated requests are denied. Verified by emulator rule tests.
+- Consumes: `getTestEnv`, `seedMember` (Task 4); the member rules in `firestore.rules` (Task 4).
+- Produces: emulator-backed rule-behavior tests proving the access model.
 
-- [ ] **Step 1: Add the rules-testing library**
-
-Run:
-```bash
-pnpm -C packages/core add -D @firebase/rules-unit-testing@^4.0.0
-```
-
-- [ ] **Step 2: Write real member rules**
-
-Replace `firestore.rules`:
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    function isSignedIn() { return request.auth != null; }
-    function isMember() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid));
-    }
-
-    match /members/{uid} {
-      allow read: if isSignedIn();
-      allow write: if isMember();
-    }
-
-    match /clients/{id}   { allow read, write: if isMember(); }
-    match /projects/{id}  { allow read, write: if isMember(); }
-    match /applications/{id} { allow read, write: if isMember(); }
-    match /tasks/{id}     { allow read, write: if isMember(); }
-    match /documents/{id} { allow read, write: if isMember(); }
-    match /comments/{id}  { allow read, write: if isMember(); }
-  }
-}
-```
-
-- [ ] **Step 3: Write the failing rule tests**
+- [ ] **Step 1: Write the failing rule tests**
 
 `packages/core/src/firebase/rules.test.ts`:
 ```ts
-import { describe, it, expect, afterAll, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import {
-  initializeTestEnvironment, assertFails, assertSucceeds,
-  type RulesTestEnvironment,
-} from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { describe, it, beforeEach, afterAll } from "vitest";
+import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
+import { doc, getDoc } from "firebase/firestore";
+import { getTestEnv, seedMember } from "./testEnv";
 
-let env: RulesTestEnvironment;
-
-beforeAll(async () => {
-  env = await initializeTestEnvironment({
-    projectId: "demo-rules",
-    firestore: { rules: readFileSync("../../firestore.rules", "utf8"), host: "localhost", port: 8080 },
+describe("member rule behavior", () => {
+  beforeEach(async () => {
+    const env = await getTestEnv();
+    await env.clearFirestore();
   });
-});
-afterAll(() => env.cleanup());
+  afterAll(async () => {
+    const env = await getTestEnv();
+    await env.cleanup();
+  });
 
-describe("member rules", () => {
   it("denies unauthenticated reads of clients", async () => {
+    const env = await getTestEnv();
     const db = env.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, "clients/c1")));
   });
 
-  it("allows a member to read clients", async () => {
-    // seed a members doc via admin (bypasses rules)
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "members/u1"), { role: "owner" });
-    });
-    const db = env.authenticatedContext("u1").firestore();
-    await assertSucceeds(getDoc(doc(db, "clients/c1")));
-  });
-
   it("denies a signed-in non-member", async () => {
+    const env = await getTestEnv();
     const db = env.authenticatedContext("stranger").firestore();
     await assertFails(getDoc(doc(db, "clients/c1")));
+  });
+
+  it("allows a seeded member to read clients", async () => {
+    await seedMember("u1");
+    const env = await getTestEnv();
+    const db = env.authenticatedContext("u1").firestore();
+    await assertSucceeds(getDoc(doc(db, "clients/c1")));
   });
 });
 ```
 
-- [ ] **Step 4: Run to verify (fails if rules wrong, passes when correct)**
+- [ ] **Step 2: Run to verify (passes against the Task 4 rules)**
 
 Run:
 ```bash
-pnpm exec firebase emulators:exec --only firestore "pnpm -C packages/core test rules"
+pnpm exec firebase emulators:exec --only firestore --project demo-solvingclub "pnpm -C packages/core test rules"
 ```
 Expected: PASS — all three rule assertions hold.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: member-scoped firestore security rules with emulator tests"
+git commit -m "test(core): member rule-behavior deny/allow coverage"
 ```
 
 ---
@@ -877,9 +920,10 @@ git commit -m "feat: member-scoped firestore security rules with emulator tests"
 - Member/Client models → Task 2.
 - Firebase Auth + Firestore + emulator → Tasks 3–5.
 - Member email/password login → Task 5.
-- Member security rules → Task 6.
+- Member security rules authored → Task 4 (installed with the data-access layer so the data-access test runs through the real rules). Rule-behavior deny/allow coverage → Task 6.
+- Client data-access verified while signed in as a member (chosen approach: test through real rules, not by bypassing them) → Task 4.
 - Deferred to later plans (correctly not here): tasks board (Plan 2), Drive/documents (Plan 3), client login/comments/reprioritize (Plan 4). `clientId`-everywhere constraint recorded in Global Constraints for those plans.
 
-**Placeholder scan:** `.firebaserc` intentionally contains `YOUR_PROJECT_ID` — flagged as a fill-in with instructions, not a plan gap. No other placeholders.
+**Placeholder scan:** `.firebaserc` uses `demo-solvingclub` (emulator-only; real prod id filled in at deploy). No other placeholders.
 
-**Type consistency:** `FirebaseServices`, `initFirebase`, `connectToEmulators` used identically in Tasks 3, 4 (test helper), and 5 (web). `parseClient`/`Client` shape consistent between Task 2 and Task 4. `createClient`/`listClients` signatures match between the Interfaces block and the implementation.
+**Type consistency:** `FirebaseServices`, `initFirebase`, `connectToEmulators` used identically in Tasks 3 and 5 (web). `getTestEnv`/`seedMember`/`memberDb` defined in Task 4's `testEnv.ts` and reused verbatim in Task 6. `parseClient`/`Client` shape consistent between Task 2 and Task 4. `createClient`/`listClients` signatures match between the Interfaces block and the implementation. `@firebase/rules-unit-testing@^4.0.0` added once, in Task 4.
