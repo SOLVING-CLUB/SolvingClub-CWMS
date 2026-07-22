@@ -230,7 +230,8 @@ kbd svg { width: 10px; }
 .work-row small, .client-row small { color: var(--muted-foreground); font-size: 11px; }
 .work-row time { margin-left: auto; color: var(--muted-foreground); font-family: var(--font-mono); font-size: 10px; }
 .work-row time.overdue { color: var(--status-blocked); }
-.work-row.actionable { display: grid; grid-template-columns: 92px minmax(0, 1fr) 76px 82px 14px; transition: background .15s; }
+.work-row.actionable { display: grid; grid-template-columns: 132px minmax(0, 1fr) 76px 82px 14px; transition: background .15s; }
+.work-row.actionable > .status-badge-cell, .work-row.actionable > [data-slot="badge"] { min-width: 0; }
 .work-row.actionable:hover { background: var(--accent); }
 .row-arrow { width: 13px; color: var(--muted-foreground); }
 .client-row > svg { width: 13px; margin-left: auto; color: var(--muted-foreground); }
@@ -915,7 +916,7 @@ th { font-weight: 600; }
   .pulse-grid { grid-template-columns: repeat(2, 1fr); }
   .delivery-brief { min-height: 0; grid-template-columns: 1fr; gap: 24px; padding: 20px; }
   .delivery-brief::after { opacity: .45; }
-  .work-row.actionable { grid-template-columns: 82px minmax(0, 1fr) 65px; }
+  .work-row.actionable { grid-template-columns: 112px minmax(0, 1fr) 65px; }
   .work-row.actionable .priority-badge, .work-row.actionable .row-arrow { display: none; }
   .client-grid { grid-template-columns: 1fr; }
   .entity-grid { grid-template-columns: 1fr; }
