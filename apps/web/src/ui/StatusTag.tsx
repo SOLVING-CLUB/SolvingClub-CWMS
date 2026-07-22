@@ -21,7 +21,7 @@ export function StatusSelect<T extends string>(
   { value: T; tone: StatusTone; options: readonly T[]; onChange: (v: T) => void; isDisabled?: boolean },
 ) {
   return (
-    <NativeSelect disabled={isDisabled} value={value} onChange={(e) => onChange(e.target.value as T)} className="h-8 w-auto font-mono text-xs uppercase" style={{ color: TONE_VAR[tone] }}>
+    <NativeSelect disabled={isDisabled} value={value} onChange={(e) => onChange(e.target.value as T)} className="status-native-select h-8 w-auto font-mono uppercase" style={{ color: TONE_VAR[tone] }}>
       {options.map((o) => <NativeSelectOption key={o} value={o}>{o.replace(/_/g, " ")}</NativeSelectOption>)}
     </NativeSelect>
   );
