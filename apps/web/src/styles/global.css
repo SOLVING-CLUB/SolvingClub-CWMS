@@ -363,7 +363,7 @@ kbd svg { width: 10px; }
 .task-create-card > footer small { color: var(--muted-foreground); font-family: var(--font-mono); font-size: 11px; }
 .application-task-loading { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .application-task-list { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
-.application-task-head, .application-task-row { display: grid; grid-template-columns: minmax(220px, 1fr) 126px 120px 154px 132px 104px; align-items: center; gap: 9px; }
+.application-task-head, .application-task-row { display: grid; grid-template-columns: minmax(200px, 1fr) 150px 120px 154px 132px 104px; align-items: center; gap: 9px; }
 .application-task-head { min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .application-task { position: relative; border-bottom: 1px solid var(--border); }
 .application-task:last-child { border-bottom: 0; }
@@ -415,7 +415,7 @@ kbd svg { width: 10px; }
 .application-board-meta time.overdue { color: var(--status-blocked); }
 .application-board-footer { justify-content: space-between; padding-top: 9px; border-top: 1px solid var(--border); }
 .application-board-footer > span { overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.application-board-footer [data-slot="native-select-wrapper"], .application-board-footer [data-slot="native-select"] { width: 104px; }
+.application-board-footer [data-slot="native-select-wrapper"], .application-board-footer [data-slot="native-select"] { width: 128px; }
 .application-board-footer [data-slot="native-select"] { height: 29px; font-size: 10px; }
 .application-board-actions { position: absolute; right: 6px; top: 6px; opacity: 0; transition: opacity .15s; }
 .application-board-card:hover .application-board-actions, .application-board-card:focus-within .application-board-actions { opacity: 1; }
@@ -722,7 +722,7 @@ kbd svg { width: 10px; }
 .work-result-count { margin-left: auto; padding-right: 5px; color: var(--muted-foreground); font-family: var(--font-mono); font-size: 9px; white-space: nowrap; }
 .work-list { overflow: hidden; border: 1px solid var(--border); border-radius: 9px; background: var(--card); }
 .work-loading { display: grid; gap: 7px; padding: 10px; }
-.work-list-head, .command-work-item { display: grid; grid-template-columns: 112px minmax(240px, 1fr) 120px 116px 105px 58px; align-items: center; gap: 10px; }
+.work-list-head, .command-work-item { display: grid; grid-template-columns: 138px minmax(220px, 1fr) 120px 116px 105px 58px; align-items: center; gap: 10px; }
 .work-list-head { min-height: 33px; padding: 0 11px; border-bottom: 1px solid var(--border); background: var(--muted); color: var(--muted-foreground); font-size: 8px; font-weight: 620; letter-spacing: .05em; text-transform: uppercase; }
 .command-work-item { position: relative; min-height: 61px; padding: 7px 11px; border-bottom: 1px solid var(--border); }
 .command-work-item:last-child { border-bottom: 0; }
