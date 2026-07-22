@@ -757,6 +757,10 @@ kbd svg { width: 10px; }
 .priority-someday i { border: 1px solid var(--muted-foreground); background: transparent; }
 .priority-hint { margin-left: auto; padding-left: 12px; color: var(--muted-foreground); font-size: 9px; }
 .task-priority-select .priority-trigger { min-width: 118px; border-color: var(--input); background: transparent; }
+/* Status <select> must show its longest label ("in progress") without clipping.
+   The base native-select renders text at 14px; force the intended 12px and trim
+   the chevron padding so the value always fits inside its column. */
+.status-native-select > [data-slot="native-select"] { padding-left: 8px; padding-right: 26px; font-size: 12px; letter-spacing: 0; }
 .app-shell { display: flex; min-height: 100svh; }
 .sidebar { width: 230px; min-height: 100svh; display: flex; flex-direction: column; padding: 16px 10px; border-right: 1px solid var(--border); background: var(--sidebar); }
 .sidebar-brand { margin-bottom: 24px; }
