@@ -105,3 +105,13 @@ export async function uploadFile(
   const file = await drive.files.get({ fileId: id, fields: "webViewLink" });
   return { id, url: file.data.webViewLink ?? `https://drive.google.com/file/d/${id}/view` };
 }
+
+/** Removes a managed file from Drive. Missing/already-trashed files are treated as deleted. */
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const drive = getDrive();
+  try { await drive.files.delete({ fileId }); }
+  catch (error: unknown) {
+    const status = (error as { code?: number }).code;
+    if (status !== 404) throw error;
+  }
+}

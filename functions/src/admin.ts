@@ -15,7 +15,7 @@ export async function assertOwnerOrAdmin(uid: string | undefined): Promise<void>
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
   const snap = await db.doc(`members/${uid}`).get();
   const role = snap.exists ? snap.get("role") : undefined;
-  if (role !== "owner" && role !== "admin") {
+  if (snap.get("status") !== "active" || (role !== "owner" && role !== "admin")) {
     throw new HttpsError("permission-denied", "Only an owner or admin may do this.");
   }
 }
@@ -24,5 +24,13 @@ export async function assertOwnerOrAdmin(uid: string | undefined): Promise<void>
 export async function assertMember(uid: string | undefined): Promise<void> {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
   const snap = await db.doc(`members/${uid}`).get();
-  if (!snap.exists) throw new HttpsError("permission-denied", "Members only.");
+  if (!snap.exists || snap.get("status") !== "active") throw new HttpsError("permission-denied", "Active members only.");
+}
+
+export async function assertOwner(uid: string | undefined): Promise<void> {
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const snap = await db.doc(`members/${uid}`).get();
+  if (!snap.exists || snap.get("status") !== "active" || snap.get("role") !== "owner") {
+    throw new HttpsError("permission-denied", "Only an active owner may do this.");
+  }
 }

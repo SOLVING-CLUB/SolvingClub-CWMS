@@ -4,9 +4,22 @@ service cloud.firestore {
 
     function isSignedIn() { return request.auth != null; }
 
+    function memberData() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    }
+
     function isMember() {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && memberData().status == 'active';
+    }
+
+    function isOwnerOrAdmin() {
+      return isMember() && memberData().role in ['owner', 'admin'];
+    }
+
+    function isOwner() {
+      return isMember() && memberData().role == 'owner';
     }
 
     function isClient() {
@@ -17,72 +30,230 @@ service cloud.firestore {
       return isClient() && request.auth.token.clientId == cid;
     }
 
+    function validTaskData(data) {
+      return data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 240
+        && (!(data.keys().hasAny(['description']))
+          || (data.description is string && data.description.size() <= 4000))
+        && data.status in ['todo', 'in_progress', 'blocked', 'done']
+        && data.priority is int
+        && data.priority >= 1
+        && data.priority <= 5
+        && data.order is number;
+    }
+
+    function validClientData(data) {
+      return data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 160
+        && data.email is string
+        && data.email.matches('[^@]+@[^@]+\\.[^@]+')
+        && data.status in ['active', 'archived']
+        && data.createdAt is number;
+    }
+
+    function validProjectData(data) {
+      return data.clientId is string
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 160
+        && (!(data.keys().hasAny(['description']))
+          || (data.description is string && data.description.size() <= 4000))
+        && data.status in ['active', 'archived']
+        && data.createdAt is number;
+    }
+
+    function validApplicationData(data) {
+      return data.projectId is string
+        && data.clientId is string
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 160
+        && (!(data.keys().hasAny(['type']))
+          || (data.type is string && data.type.size() > 0 && data.type.size() <= 80))
+        && (!(data.keys().hasAny(['description']))
+          || (data.description is string && data.description.size() <= 4000))
+        && data.status in ['active', 'archived']
+        && data.createdAt is number;
+    }
+
+    function validInvoiceData(data) {
+      return data.keys().hasOnly(['clientId', 'number', 'status', 'lineItems', 'currency', 'total', 'issueDate', 'dueDate', 'notes', 'createdBy', 'createdAt'])
+        && data.keys().hasAll(['clientId', 'number', 'status', 'lineItems', 'currency', 'total', 'issueDate', 'createdBy', 'createdAt'])
+        && data.clientId is string
+        && data.number is string && data.number.matches('INV-[0-9]{4,}')
+        && data.status in ['draft', 'sent', 'paid', 'overdue', 'void']
+        && data.lineItems is list && data.lineItems.size() > 0 && data.lineItems.size() <= 100
+        && data.currency is string && data.currency.matches('[A-Z]{3}')
+        && data.total is number && data.total >= 0
+        && data.issueDate is number && data.createdAt is number
+        && data.createdBy is string
+        && (!(data.keys().hasAny(['dueDate'])) || data.dueDate is number)
+        && (!(data.keys().hasAny(['notes'])) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function validDocumentOwner(data) {
+      return (data.ownerType == 'client'
+          && data.ownerId == data.clientId
+          && exists(/databases/$(database)/documents/clients/$(data.clientId)))
+        || (data.ownerType == 'project'
+          && exists(/databases/$(database)/documents/projects/$(data.ownerId))
+          && get(/databases/$(database)/documents/projects/$(data.ownerId)).data.clientId == data.clientId)
+        || (data.ownerType == 'application'
+          && exists(/databases/$(database)/documents/applications/$(data.ownerId))
+          && get(/databases/$(database)/documents/applications/$(data.ownerId)).data.clientId == data.clientId)
+        || (data.ownerType == 'task'
+          && exists(/databases/$(database)/documents/tasks/$(data.ownerId))
+          && get(/databases/$(database)/documents/tasks/$(data.ownerId)).data.clientId == data.clientId);
+    }
+
     // Org members are internal-only.
     match /members/{uid} {
-      allow read: if isMember();
-      allow write: if isMember();
+      // A signed-in user may read only their own membership status so the UI
+      // can explain disabled or missing access instead of hanging at startup.
+      allow read: if isMember() || (isSignedIn() && request.auth.uid == uid);
+      allow create, update, delete: if isOwner();
     }
 
     // A client can read their own client record; members manage all.
     match /clients/{id} {
       allow read: if isMember() || ownsClient(id);
-      allow write: if isMember();
+      allow create: if isOwnerOrAdmin() && validClientData(request.resource.data);
+      allow update: if isOwnerOrAdmin()
+        && validClientData(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'email', 'phone', 'status']);
+      allow delete: if isOwnerOrAdmin();
     }
 
     match /projects/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
-      allow write: if isMember();
+      allow create: if isOwnerOrAdmin()
+        && validProjectData(request.resource.data)
+        && exists(/databases/$(database)/documents/clients/$(request.resource.data.clientId));
+      allow update: if isOwnerOrAdmin()
+        && validProjectData(request.resource.data)
+        && request.resource.data.clientId == resource.data.clientId;
+      allow delete: if isOwnerOrAdmin();
     }
 
     match /applications/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
-      allow write: if isMember();
+      allow create: if isOwnerOrAdmin()
+        && validApplicationData(request.resource.data)
+        && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
+        && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.clientId
+          == request.resource.data.clientId;
+      allow update: if isOwnerOrAdmin()
+        && validApplicationData(request.resource.data)
+        && request.resource.data.clientId == resource.data.clientId
+        && request.resource.data.projectId == resource.data.projectId;
+      allow delete: if isOwnerOrAdmin();
     }
 
     match /tasks/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
-      allow create, delete: if isMember();
-      // Members may change anything; a client may only reprioritize their own tasks.
-      allow update: if isMember()
-        || (ownsClient(resource.data.clientId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['priority', 'order']));
+      allow create: if isMember()
+        && validTaskData(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && exists(/databases/$(database)/documents/applications/$(request.resource.data.applicationId))
+        && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.projectId
+          == request.resource.data.projectId
+        && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.clientId
+          == request.resource.data.clientId;
+      allow delete: if isOwnerOrAdmin();
+      // Admins manage any task; members edit only tasks assigned to themselves.
+      allow update: if validTaskData(request.resource.data)
+        && (((isOwnerOrAdmin()
+              || (isMember()
+                  && resource.data.assigneeUid == request.auth.uid
+                  && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasOnly(['title', 'description', 'status', 'priority', 'order', 'dueDate'])))
+              && request.resource.data.clientId == resource.data.clientId
+              && request.resource.data.projectId == resource.data.projectId
+              && request.resource.data.applicationId == resource.data.applicationId)
+          || (ownsClient(resource.data.clientId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['priority', 'order'])));
     }
 
     match /documents/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
-      allow write: if isMember();
+      allow create: if isOwnerOrAdmin()
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.url is string
+        && request.resource.data.url.matches('https?://.*')
+        && validDocumentOwner(request.resource.data);
+      allow update: if isOwnerOrAdmin()
+        && request.resource.data.clientId == resource.data.clientId
+        && request.resource.data.ownerType == resource.data.ownerType
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.uploadedBy == resource.data.uploadedBy;
+      allow delete: if isOwnerOrAdmin();
     }
 
     match /comments/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
       // A client may add their own comment on their own task; members may write freely.
-      allow create: if isMember()
-        || (ownsClient(request.resource.data.clientId)
-            && request.resource.data.authorUid == request.auth.uid
-            && request.resource.data.authorType == 'client');
-      allow update, delete: if isMember();
+      allow create: if ((isMember()
+              && request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorType == 'member')
+          || (ownsClient(request.resource.data.clientId)
+              && request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorType == 'client'))
+        && request.resource.data.keys().hasOnly(['taskId', 'clientId', 'authorUid', 'authorType', 'body', 'createdAt'])
+        && request.resource.data.taskId is string
+        && request.resource.data.clientId is string
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 4000
+        && request.resource.data.createdAt is number
+        && exists(/databases/$(database)/documents/tasks/$(request.resource.data.taskId))
+        && get(/databases/$(database)/documents/tasks/$(request.resource.data.taskId)).data.clientId
+          == request.resource.data.clientId;
+      allow update: if (isOwnerOrAdmin()
+          || (isMember() && resource.data.authorUid == request.auth.uid))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body']);
+      allow delete: if isOwnerOrAdmin()
+        || (isMember() && resource.data.authorUid == request.auth.uid);
     }
 
     match /notifications/{id} {
       function isOwnClientNotification(data) {
         return data.recipientType == 'client' && ownsClient(data.recipientId);
       }
-      allow read: if isMember() || isOwnClientNotification(resource.data);
-      allow create, delete: if isMember();
-      // Members may change anything; a client may only mark their own notification read.
-      allow update: if isMember()
+      function isOwnMemberNotification(data) {
+        return isMember() && data.recipientType == 'member'
+          && data.recipientId == request.auth.uid;
+      }
+      allow read: if isOwnMemberNotification(resource.data) || isOwnClientNotification(resource.data);
+      allow create, delete: if isOwnerOrAdmin();
+      allow update: if (isOwnMemberNotification(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']))
         || (isOwnClientNotification(resource.data)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
     }
 
     // Sequence counters (e.g. invoice numbering) — internal-only.
     match /counters/{id} {
-      allow read, write: if isMember();
+      allow read, write: if isOwnerOrAdmin();
     }
 
     match /invoices/{id} {
       allow read: if isMember() || ownsClient(resource.data.clientId);
-      allow write: if isMember();
+      allow create: if isOwnerOrAdmin()
+        && request.resource.data.createdBy == request.auth.uid
+        && validInvoiceData(request.resource.data)
+        && exists(/databases/$(database)/documents/clients/$(request.resource.data.clientId));
+      allow update: if isOwnerOrAdmin()
+        && validInvoiceData(request.resource.data)
+        && request.resource.data.clientId == resource.data.clientId
+        && request.resource.data.number == resource.data.number
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ['draft', 'sent', 'paid', 'overdue', 'void']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isOwnerOrAdmin();
     }
   }
 }

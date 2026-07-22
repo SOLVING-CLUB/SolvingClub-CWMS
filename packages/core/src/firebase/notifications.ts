@@ -1,9 +1,7 @@
 import {
-  collection, addDoc, getDocs, query, where, doc, updateDoc, type Firestore,
+  collection, addDoc, getDocs, onSnapshot, query, where, doc, updateDoc, writeBatch, type Firestore, type Unsubscribe,
 } from "firebase/firestore";
 import { parseNotification, type Notification } from "../models/notification";
-
-export const ORG_BROADCAST = "org";
 
 export async function createNotification(
   db: Firestore,
@@ -26,13 +24,10 @@ async function fetchByRecipient(
   return snap.docs.map((d) => parseNotification({ id: d.id, ...d.data() }));
 }
 
-/** A member's own notifications plus org-wide broadcasts, newest first. */
+/** A member's recipient-specific notifications, newest first. */
 export async function listMemberNotifications(db: Firestore, uid: string): Promise<Notification[]> {
-  const [own, broadcast] = await Promise.all([
-    fetchByRecipient(db, "member", uid),
-    fetchByRecipient(db, "member", ORG_BROADCAST),
-  ]);
-  return [...own, ...broadcast].sort((a, b) => b.createdAt - a.createdAt);
+  const own = await fetchByRecipient(db, "member", uid);
+  return own.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function listClientNotifications(db: Firestore, clientId: string): Promise<Notification[]> {
@@ -40,6 +35,41 @@ export async function listClientNotifications(db: Firestore, clientId: string): 
   return list.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+function subscribeByRecipient(
+  db: Firestore,
+  recipientType: "member" | "client",
+  recipientId: string,
+  onData: (notifications: Notification[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, "notifications"), where("recipientType", "==", recipientType), where("recipientId", "==", recipientId)),
+    (snapshot) => onData(snapshot.docs
+      .map((item) => parseNotification({ id: item.id, ...item.data() }))
+      .sort((a, b) => b.createdAt - a.createdAt)),
+    (error) => onError?.(error),
+  );
+}
+
+export function subscribeMemberNotifications(
+  db: Firestore, uid: string, onData: (notifications: Notification[]) => void, onError?: (error: Error) => void,
+): Unsubscribe {
+  return subscribeByRecipient(db, "member", uid, onData, onError);
+}
+
+export function subscribeClientNotifications(
+  db: Firestore, clientId: string, onData: (notifications: Notification[]) => void, onError?: (error: Error) => void,
+): Unsubscribe {
+  return subscribeByRecipient(db, "client", clientId, onData, onError);
+}
+
 export async function markNotificationRead(db: Firestore, id: string): Promise<void> {
   await updateDoc(doc(db, "notifications", id), { read: true });
+}
+
+export async function markNotificationsRead(db: Firestore, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const batch = writeBatch(db);
+  ids.forEach((id) => batch.update(doc(db, "notifications", id), { read: true }));
+  await batch.commit();
 }

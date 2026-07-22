@@ -3,8 +3,8 @@ import { z } from "zod";
 export const projectSchema = z.object({
   id: z.string().min(1),
   clientId: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional(),
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(4000).optional(),
   status: z.enum(["active", "archived"]).default("active"),
   driveFolderId: z.string().optional(),
   createdAt: z.number(),

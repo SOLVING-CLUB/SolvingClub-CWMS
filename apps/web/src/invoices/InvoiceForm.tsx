@@ -1,64 +1,70 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { type LineItem } from "@solvingclub/core";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Plus, ReceiptText, Trash2 } from "lucide-react";
 
-export type InvoiceFormValues = { lineItems: LineItem[]; dueDate?: number; notes?: string };
-
+export type InvoiceFormValues = { lineItems: LineItem[]; currency: string; dueDate?: number; notes?: string };
 const emptyRow: LineItem = { description: "", quantity: 1, unitPrice: 0 };
+const CURRENCIES = ["USD", "INR", "EUR", "GBP", "AUD", "CAD"] as const;
+
+function currencySymbol(currency: string) {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency, currencyDisplay: "narrowSymbol" })
+      .formatToParts(0).find((part) => part.type === "currency")?.value ?? currency;
+  } catch { return currency; }
+}
 
 export function InvoiceForm({ onSubmit }: { onSubmit: (v: InvoiceFormValues) => Promise<void> }) {
+  const fieldId = useId();
   const [rows, setRows] = useState<LineItem[]>([{ ...emptyRow }]);
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function updateRow(i: number, patch: Partial<LineItem>) {
-    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  function updateRow(index: number, patch: Partial<LineItem>) {
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
   }
+
+  const lineItems = rows.filter((row) => row.description.trim() && row.quantity > 0 && row.unitPrice >= 0);
+  const total = lineItems.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0);
+  const valid = lineItems.length > 0 && rows.every((row) => row.quantity > 0 && row.unitPrice >= 0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const lineItems = rows.filter((r) => r.description.trim() && r.quantity > 0);
-    if (lineItems.length === 0) return;
-    await onSubmit({
-      lineItems,
-      ...(dueDate ? { dueDate: new Date(dueDate).getTime() } : {}),
-      ...(notes.trim() ? { notes: notes.trim() } : {}),
-    });
-    setRows([{ ...emptyRow }]); setDueDate(""); setNotes("");
+    if (!valid) { setError("Add at least one complete line item with a quantity greater than zero."); return; }
+    setBusy(true); setError(null);
+    try {
+      await onSubmit({ lineItems, currency, ...(dueDate ? { dueDate: new Date(`${dueDate}T12:00:00`).getTime() } : {}), ...(notes.trim() ? { notes: notes.trim() } : {}) });
+      setRows([{ ...emptyRow }]); setDueDate(""); setNotes(""); setCurrency("USD");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The invoice could not be created.");
+    } finally { setBusy(false); }
   }
 
-  const total = rows.reduce((sum, r) => sum + r.quantity * r.unitPrice, 0);
-
-  return (
-    <form onSubmit={submit} className="card">
-      {rows.map((row, i) => (
-        <div key={i} className="form-row" style={{ marginBottom: 6 }}>
-          <input placeholder="Description" value={row.description}
-            onChange={(e) => updateRow(i, { description: e.target.value })} style={{ flex: 1 }} />
-          <input type="number" min={0} step="any" placeholder="Qty" value={row.quantity}
-            className="mono" style={{ width: 64 }}
-            onChange={(e) => updateRow(i, { quantity: Number(e.target.value) })} />
-          <input type="number" min={0} step="any" placeholder="Unit price" value={row.unitPrice}
-            className="mono" style={{ width: 90 }}
-            onChange={(e) => updateRow(i, { unitPrice: Number(e.target.value) })} />
-          <button type="button" onClick={() => setRows((r) => r.filter((_, idx) => idx !== i))}>Remove</button>
-        </div>
-      ))}
-      <button type="button" onClick={() => setRows((r) => [...r, { ...emptyRow }])}>+ Line item</button>
-
-      <div className="form-row" style={{ marginTop: 12 }}>
-        <label className="muted" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          Due <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </label>
-        <input placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ flex: 1 }} />
-      </div>
-
-      <div style={{
-        display: "flex", alignItems: "center", marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)",
-      }}>
-        <span className="mono" style={{ fontWeight: 600, fontSize: 15 }}>${total.toFixed(2)}</span>
-        <span style={{ flex: 1 }} />
-        <button type="submit">Create invoice</button>
-      </div>
-    </form>
-  );
+  return <form onSubmit={submit} className="invoice-create-card">
+    <header className="invoice-create-header"><span><ReceiptText /> New invoice</span><small>Draft · {currency}</small></header>
+    <div className="invoice-line-editor">
+      <div className="invoice-line-head"><span>Description</span><span>Quantity</span><span>Unit price</span><span className="sr-only">Remove</span></div>
+      {rows.map((row, index) => <div key={index} className="invoice-line-row">
+        <Input aria-label={`Line item ${index + 1} description`} placeholder="Service or deliverable" value={row.description} maxLength={160} onChange={(e) => updateRow(index, { description: e.target.value })} />
+        <Input aria-label={`Line item ${index + 1} quantity`} type="number" min={0.01} step="any" value={row.quantity} className="font-mono" onChange={(e) => updateRow(index, { quantity: Number(e.target.value) })} />
+        <div className="invoice-money-input"><span>{currencySymbol(currency)}</span><Input aria-label={`Line item ${index + 1} unit price`} type="number" min={0} step="0.01" value={row.unitPrice} className="font-mono" onChange={(e) => updateRow(index, { unitPrice: Number(e.target.value) })} /></div>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove line item ${index + 1}`} isDisabled={rows.length === 1} onPress={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 /></Button>
+      </div>)}
+      <Button type="button" variant="ghost" size="sm" className="invoice-add-line" onPress={() => setRows((current) => [...current, { ...emptyRow }])}><Plus /> Add line item</Button>
+    </div>
+    <div className="invoice-create-meta">
+      <div><Label htmlFor={`${fieldId}-currency`}>Currency</Label><NativeSelect id={`${fieldId}-currency`} value={currency} onChange={(event) => setCurrency(event.target.value)}>{CURRENCIES.map((item) => <NativeSelectOption key={item} value={item}>{item} — {currencySymbol(item)}</NativeSelectOption>)}</NativeSelect></div>
+      <div><Label htmlFor={`${fieldId}-due`}>Due date</Label><Input id={`${fieldId}-due`} type="date" value={dueDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDueDate(e.target.value)} /></div>
+      <div><Label htmlFor={`${fieldId}-notes`}>Client note <span>Optional</span></Label><Textarea id={`${fieldId}-notes`} placeholder="Payment terms or context shown with this invoice" value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} /></div>
+    </div>
+    {error && <p role="alert" className="form-error">{error}</p>}
+    <footer className="invoice-create-footer"><div><span>Invoice total</span><strong>{new Intl.NumberFormat(undefined, { style: "currency", currency }).format(total)}</strong></div><Button type="submit" isDisabled={busy || !valid}>{busy ? "Creating draft…" : "Create draft invoice"}</Button></footer>
+  </form>;
 }

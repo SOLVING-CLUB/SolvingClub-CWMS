@@ -52,7 +52,7 @@ async function resolveFolderNames(
  * in staging.
  */
 export const uploadDocument = onCall(
-  { secrets: [driveSaKeyJson, driveRootFolderId, driveShareWith] },
+  { invoker: "public", secrets: [driveSaKeyJson, driveRootFolderId, driveShareWith] },
   async (request) => {
     await assertMember(request.auth?.uid);
     const uid = request.auth!.uid;

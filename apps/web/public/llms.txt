@@ -1,0 +1,13 @@
+# Solving Club Client Management System
+
+Solving Club is a secure client delivery workspace for managing clients, projects, applications, tasks, discussions, shared documents, invoices, and client portal access.
+
+## Product areas
+
+- Dashboard: delivery health, attention queue, and client load.
+- Clients: relationship workspaces with project, files, billing, and access details.
+- Projects: dedicated project workspaces and application management.
+- Applications: focused delivery task workspaces with discussions and task files.
+- All work: cross-client delivery command center with live filters.
+
+Authentication is required for application data. Client accounts only access their own workspace.

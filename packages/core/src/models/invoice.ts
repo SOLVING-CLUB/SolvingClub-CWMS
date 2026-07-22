@@ -4,7 +4,7 @@ export const invoiceStatusSchema = z.enum(["draft", "sent", "paid", "overdue", "
 export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 
 export const lineItemSchema = z.object({
-  description: z.string().min(1),
+  description: z.string().trim().min(1).max(160),
   quantity: z.number().positive(),
   unitPrice: z.number().nonnegative(),
 });
@@ -20,7 +20,7 @@ export const invoiceSchema = z.object({
   total: z.number().nonnegative(),
   issueDate: z.number(),
   dueDate: z.number().optional(),
-  notes: z.string().optional(),
+  notes: z.string().trim().max(1000).optional(),
   createdBy: z.string().min(1),
   createdAt: z.number(),
 });

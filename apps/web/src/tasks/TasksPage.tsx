@@ -1,126 +1,194 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
-import { useParams, useLocation, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, Link, useLocation } from "react-router-dom";
 import {
-  listTasks, createTask, updateTask, deleteTask, listMembers,
-  type Task, type Member, type TaskStatus,
+  subscribeTasks, createTask, updateTask, subscribeMembers, subscribeApplication, updateApplication,
+  type Task, type Member, type TaskStatus, type Application,
 } from "@solvingclub/core";
 import { db } from "../db";
 import { fb } from "../firebase";
 import { TaskForm } from "./TaskForm";
 import { Comments } from "./Comments";
 import { Documents } from "../documents/Documents";
-import { StatusSelect, type StatusTone } from "../ui/StatusTag";
+import { StatusSelect, StatusTag, type StatusTone } from "../ui/StatusTag";
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { CalendarClock, CheckSquare2, CircleAlert, Columns3, Filter, GripVertical, List, MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { PageHeader } from "../ui/PageHeader";
+import { EmptyState } from "../ui/EmptyState";
+import { canAdmin, useSession } from "../auth/SessionContext";
+import { ConfirmAction } from "../ui/ConfirmAction";
+import { deleteTaskTree } from "../functions";
+import { canEditTask, resolveTaskAssignee } from "../lib/workspace";
+import { PriorityBadge, PrioritySelect } from "../ui/PrioritySelect";
+import { TaskEditDialog } from "./TaskEditDialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
-const STATUS_TONE: Record<TaskStatus, StatusTone> = {
-  todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done",
-};
+const STATUS_TONE: Record<TaskStatus, StatusTone> = { todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done" };
+
+function dueLabel(dueDate?: number) {
+  if (!dueDate) return "No deadline";
+  const due = new Date(dueDate); const today = new Date();
+  today.setHours(0, 0, 0, 0); due.setHours(0, 0, 0, 0);
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export function TasksPage() {
+  const session = useSession();
+  const admin = canAdmin(session.role);
+  const location = useLocation();
   const { applicationId = "", clientId = "" } = useParams();
-  const state = (useLocation().state ?? {}) as { projectId?: string; clientId?: string };
-  const projectId = state.projectId ?? "";
+  const [application, setApplication] = useState<Application | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [openComments, setOpenComments] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [view, setView] = useState<"list" | "board">("list");
+  const [editingApplication, setEditingApplication] = useState(false);
+  const [applicationName, setApplicationName] = useState("");
+  const [applicationType, setApplicationType] = useState("");
+  const [applicationDescription, setApplicationDescription] = useState("");
+  const [applicationStatus, setApplicationStatus] = useState<"active" | "archived">("active");
+  const [savingApplication, setSavingApplication] = useState(false);
+  const [applicationError, setApplicationError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [draggingTask, setDraggingTask] = useState<Task | null>(null);
+  const [dropStatus, setDropStatus] = useState<TaskStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setTasks(await listTasks(db, {
+  useEffect(() => subscribeMembers(db, setMembers, () => setLoadError(true)), []);
+  useEffect(() => subscribeApplication(db, applicationId, setApplication, () => setLoadError(true)), [applicationId]);
+  useEffect(() => {
+    setLoading(true); setLoadError(false);
+    return subscribeTasks(db, {
       applicationId,
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(assigneeFilter ? { assigneeUid: assigneeFilter } : {}),
-    }));
+    }, (nextTasks) => { setTasks(nextTasks); setLoading(false); setLoadError(false); }, () => { setLoading(false); setLoadError(true); });
   }, [applicationId, statusFilter, assigneeFilter]);
 
-  useEffect(() => { listMembers(db).then(setMembers); }, []);
-  useEffect(() => { refresh(); }, [refresh]);
+  const memberNames = new Map(members.map((member) => [member.uid, member.name]));
+  function openApplicationEditor() {
+    if (!application) return;
+    setApplicationName(application.name); setApplicationType(application.type ?? "");
+    setApplicationDescription(application.description ?? ""); setApplicationStatus(application.status);
+    setApplicationError(null); setEditingApplication(true);
+  }
+  async function saveApplication() {
+    if (!application || !applicationName.trim()) return;
+    setSavingApplication(true); setApplicationError(null);
+    try {
+      await updateApplication(db, application.id, {
+        name: applicationName, type: applicationType.trim() || null,
+        description: applicationDescription.trim() || null, status: applicationStatus,
+      });
+      setEditingApplication(false);
+    } catch (cause) { setApplicationError(cause instanceof Error ? cause.message : "Application details could not be saved."); }
+    finally { setSavingApplication(false); }
+  }
+  function submitApplicationEditor(event: React.FormEvent) { event.preventDefault(); void saveApplication(); }
+  async function updateTaskSafely(id: string, patch: Parameters<typeof updateTask>[2]) {
+    try { await updateTask(db, id, patch); setActionError(null); }
+    catch { setActionError("This task change could not be saved. Please try again."); }
+  }
+  async function moveTaskToStatus(status: TaskStatus) {
+    const task = draggingTask;
+    setDraggingTask(null); setDropStatus(null);
+    if (!task || task.status === status) return;
+    await updateTaskSafely(task.id, { status });
+  }
 
-  return (
-    <div>
-      <Link to={`/clients/${clientId}`} className="back-link">← Projects</Link>
-      <div className="eyebrow">Tasks</div>
-      <h1 style={{ marginBottom: 18 }}>{tasks.length} task{tasks.length === 1 ? "" : "s"}</h1>
+  return <div className="content-stack application-tasks-page">
+    <Link to={location.pathname.startsWith("/applications/") ? "/applications" : `/clients/${clientId}`} className="back-link">← {location.pathname.startsWith("/applications/") ? "Applications" : "Client workspace"}</Link>
+    <PageHeader eyebrow={application?.type ?? "Application"} title={application?.name ?? "Delivery tasks"} description={application?.description ?? "Plan, assign, and discuss delivery work."}
+      actions={application ? <><StatusTag tone={application.status === "active" ? "done" : "neutral"}>{application.status}</StatusTag>{admin && <Button variant="outline" size="sm" onPress={openApplicationEditor}><Pencil /> Edit application</Button>}</> : undefined} />
+    {loadError && <div className="data-error" role="alert"><CircleAlert /> Delivery work could not be synchronized. Refresh the page to retry.</div>}
+    {actionError && <div className="data-error" role="alert"><CircleAlert /> {actionError}</div>}
 
-      <TaskForm members={members} onSubmit={async (v) => {
-        await createTask(db, {
-          applicationId, projectId, clientId,
-          createdBy: fb.auth.currentUser?.uid ?? "unknown",
-          title: v.title, priority: v.priority,
-          ...(v.assigneeUid ? { assigneeUid: v.assigneeUid } : {}),
-          ...(v.dueDate ? { dueDate: v.dueDate } : {}),
-        });
-        await refresh();
-      }} />
+    {application && <TaskForm members={members} fixedAssigneeUid={admin ? undefined : session.uid} onSubmit={async (values) => {
+      const assigneeUid = resolveTaskAssignee(admin, session.uid, values.assigneeUid);
+      await createTask(db, {
+        applicationId, projectId: application.projectId, clientId, createdBy: fb.auth.currentUser?.uid ?? "unknown",
+        title: values.title, priority: values.priority,
+        ...(assigneeUid ? { assigneeUid } : {}), ...(values.dueDate ? { dueDate: values.dueDate } : {}),
+      });
+    }} />}
 
-      <div className="form-row" style={{ marginBottom: 12 }}>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as TaskStatus | "")}>
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
-        </select>
-        <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
-          <option value="">All assignees</option>
-          {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-        </select>
+    <div className="filter-bar task-filter-bar"><Filter />
+      <NativeSelect aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "")}><NativeSelectOption value="">All statuses</NativeSelectOption>{STATUSES.map((status) => <NativeSelectOption key={status} value={status}>{status.replace("_", " ")}</NativeSelectOption>)}</NativeSelect>
+      <NativeSelect aria-label="Filter by assignee" value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><NativeSelectOption value="">All assignees</NativeSelectOption>{members.map((member) => <NativeSelectOption key={member.uid} value={member.uid}>{member.name}</NativeSelectOption>)}</NativeSelect>
+      <div className="task-view-switcher" aria-label="Task view">
+        <Button aria-pressed={view === "list"} variant={view === "list" ? "secondary" : "ghost"} size="sm" onPress={() => setView("list")}><List /> List</Button>
+        <Button aria-pressed={view === "board"} variant={view === "board" ? "secondary" : "ghost"} size="sm" onPress={() => setView("board")}><Columns3 /> Board</Button>
       </div>
-
-      {tasks.length === 0 ? (
-        <p className="empty-state">No tasks match. Add one above.</p>
-      ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead>
-              <tr>
-                <th style={{ paddingLeft: 18 }}>Title</th><th>Status</th><th>Priority</th>
-                <th>Assignee</th><th>Due</th><th style={{ paddingRight: 18 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((t) => (
-                <Fragment key={t.id}>
-                  <tr>
-                    <td style={{ paddingLeft: 18, fontWeight: 500 }}>{t.title}</td>
-                    <td>
-                      <StatusSelect value={t.status} tone={STATUS_TONE[t.status]} options={STATUSES}
-                        onChange={async (v) => { await updateTask(db, t.id, { status: v }); await refresh(); }} />
-                    </td>
-                    <td>
-                      <input type="number" min={1} max={5} value={t.priority}
-                        className="mono" style={{ width: 44, padding: "4px 6px" }}
-                        onChange={async (e) => { await updateTask(db, t.id, { priority: Number(e.target.value) }); await refresh(); }} />
-                    </td>
-                    <td>
-                      <select value={t.assigneeUid ?? ""}
-                        onChange={async (e) => { await updateTask(db, t.id, { assigneeUid: e.target.value }); await refresh(); }}>
-                        <option value="">Unassigned</option>
-                        {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
-                      </select>
-                    </td>
-                    <td className="mono muted" style={{ fontSize: 12 }}>
-                      {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
-                    </td>
-                    <td style={{ paddingRight: 18, textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)}>
-                        {openComments === t.id ? "Hide" : "Discuss"}
-                      </button>{" "}
-                      <button onClick={async () => { await deleteTask(db, t.id); await refresh(); }}>Delete</button>
-                    </td>
-                  </tr>
-                  {openComments === t.id && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: "0 18px 16px", background: "var(--bg)" }}>
-                        <Comments taskId={t.id} clientId={t.clientId} authorType="member" />
-                        <Documents ownerType="task" ownerId={t.id} clientId={t.clientId} canEdit />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <span>{tasks.length} task{tasks.length === 1 ? "" : "s"}</span>
     </div>
-  );
+
+    {loading ? <div className="application-task-loading" role="status" aria-label="Loading tasks">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-16 w-full" />)}</div> : tasks.length === 0 ? (
+      <EmptyState icon={<CheckSquare2 />} title="No matching tasks" description="Create a task or change the active filters." imageSrc="/visuals/delivery-routing.jpg" imageAlt="Abstract delivery routing system" />
+    ) : view === "list" ? <section className="application-task-list" aria-label="Application tasks">
+      <header className="application-task-head"><span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Deadline</span><span className="sr-only">Actions</span></header>
+      {tasks.map((task) => {
+        const editable = canEditTask(admin, session.uid, task.assigneeUid);
+        const overdue = Boolean(task.dueDate && task.dueDate < Date.now() && task.status !== "done");
+        return <article key={task.id} className={`application-task${openComments === task.id ? " expanded" : ""}${overdue ? " overdue" : ""}`}>
+          <div className="application-task-row">
+            <button className="application-task-title" type="button" disabled={!editable} onClick={() => setEditingTask(task)}><strong>{task.title}</strong><small>{task.description || "No additional description"}</small></button>
+            <StatusSelect isDisabled={!editable} value={task.status} tone={STATUS_TONE[task.status]} options={STATUSES} onChange={(status) => updateTaskSafely(task.id, { status })} />
+            <PrioritySelect isDisabled={!editable} value={task.priority} label={`Priority for ${task.title}`} onChange={(priority) => updateTaskSafely(task.id, { priority })} />
+            <NativeSelect disabled={!admin} aria-label={`Assignee for ${task.title}`} value={task.assigneeUid ?? ""} onChange={(event) => updateTaskSafely(task.id, { assigneeUid: event.target.value || null })}><NativeSelectOption value="">Unassigned</NativeSelectOption>{members.map((member) => <NativeSelectOption key={member.uid} value={member.uid}>{member.name}</NativeSelectOption>)}</NativeSelect>
+            <time className={overdue ? "overdue" : ""} dateTime={task.dueDate ? new Date(task.dueDate).toISOString() : undefined}><CalendarClock />{dueLabel(task.dueDate)}<small>{task.assigneeUid ? memberNames.get(task.assigneeUid) ?? "Assigned" : "Unassigned"}</small></time>
+            <div className="application-task-actions"><Button variant="ghost" size="icon-sm" aria-label={`${openComments === task.id ? "Hide" : "Open"} discussion for ${task.title}`} onPress={() => setOpenComments(openComments === task.id ? null : task.id)}><MessageSquare /></Button>{editable && <Button variant="ghost" size="icon-sm" aria-label={`Edit ${task.title}`} onPress={() => setEditingTask(task)}><Pencil /></Button>}{admin && <ConfirmAction title={`Delete ${task.title}?`} description="This permanently removes the task, its discussion, and document records." trigger={<Button aria-label={`Delete ${task.title}`} variant="ghost" size="icon-sm" className="text-destructive"><Trash2 /></Button>} onConfirm={async () => { await deleteTaskTree({ id: task.id }); }} />}</div>
+          </div>
+          {openComments === task.id && <div className="application-task-detail"><Comments taskId={task.id} clientId={task.clientId} authorType="member" /><Documents ownerType="task" ownerId={task.id} clientId={task.clientId} canEdit={admin} /></div>}
+        </article>;
+      })}
+    </section> : <section className="application-task-board" aria-label="Application task board">
+      {STATUSES.map((status) => {
+        const statusTasks = tasks.filter((task) => task.status === status);
+        return <section className={`application-board-column${dropStatus === status ? " is-drop-target" : ""}`} key={status} aria-label={`${status.replace("_", " ")} tasks`} onDragOver={(event) => { event.preventDefault(); if (draggingTask) setDropStatus(status); }} onDrop={(event) => { event.preventDefault(); void moveTaskToStatus(status); }}>
+          <header><StatusTag tone={STATUS_TONE[status]}>{status.replace("_", " ")}</StatusTag><span>{statusTasks.length}</span></header>
+          <div className="application-board-cards">
+            {statusTasks.length === 0 ? <p className="application-board-empty">No tasks</p> : statusTasks.map((task) => {
+              const editable = canEditTask(admin, session.uid, task.assigneeUid);
+              const overdue = Boolean(task.dueDate && task.dueDate < Date.now() && task.status !== "done");
+              return <article className={`application-board-card${overdue ? " overdue" : ""}${draggingTask?.id === task.id ? " is-dragging" : ""}`} key={task.id} draggable={editable} onDragStart={(event) => { if (!editable) return; event.dataTransfer.effectAllowed = "move"; setDraggingTask(task); }} onDragEnd={() => { setDraggingTask(null); setDropStatus(null); }}>
+                {editable && <span className="application-board-grip" aria-hidden="true"><GripVertical /></span>}
+                <button className="application-board-title" type="button" disabled={!editable} onClick={() => setEditingTask(task)}>
+                  <strong>{task.title}</strong><small>{task.description || "No additional description"}</small>
+                </button>
+                <div className="application-board-meta"><PriorityBadge value={task.priority} /><time className={overdue ? "overdue" : ""} dateTime={task.dueDate ? new Date(task.dueDate).toISOString() : undefined}><CalendarClock />{dueLabel(task.dueDate)}</time></div>
+                <div className="application-board-footer"><span>{task.assigneeUid ? memberNames.get(task.assigneeUid) ?? "Assigned" : "Unassigned"}</span><StatusSelect isDisabled={!editable} value={task.status} tone={STATUS_TONE[task.status]} options={STATUSES} onChange={(nextStatus) => updateTaskSafely(task.id, { status: nextStatus })} /></div>
+                <div className="application-board-actions"><Button variant="ghost" size="icon-sm" aria-label={`${openComments === task.id ? "Hide" : "Open"} discussion for ${task.title}`} onPress={() => setOpenComments(openComments === task.id ? null : task.id)}><MessageSquare /></Button>{editable && <Button variant="ghost" size="icon-sm" aria-label={`Edit ${task.title}`} onPress={() => setEditingTask(task)}><Pencil /></Button>}</div>
+                {openComments === task.id && <div className="application-board-detail"><Comments taskId={task.id} clientId={task.clientId} authorType="member" /><Documents ownerType="task" ownerId={task.id} clientId={task.clientId} canEdit={admin} /></div>}
+              </article>;
+            })}
+          </div>
+        </section>;
+      })}
+    </section>}
+    <TaskEditDialog task={editingTask} members={members} canAssign={admin} onOpenChange={(open) => !open && setEditingTask(null)} onSaved={async () => {}} />
+    <Dialog isOpen={editingApplication} onOpenChange={setEditingApplication}>
+      <DialogHeader><DialogTitle>Edit application</DialogTitle><DialogDescription>Keep delivery context, scope, and lifecycle accurate for everyone working in this workspace.</DialogDescription></DialogHeader>
+      <form id="application-workspace-editor" className="dialog-form application-edit-form" onSubmit={submitApplicationEditor}>
+        <div><Label htmlFor="workspace-application-name">Name</Label><Input id="workspace-application-name" autoFocus value={applicationName} maxLength={160} onChange={(event) => setApplicationName(event.target.value)} /></div>
+        <div><Label htmlFor="workspace-application-type">Type <span>Optional</span></Label><Input id="workspace-application-type" placeholder="Website, API, campaign…" value={applicationType} maxLength={80} onChange={(event) => setApplicationType(event.target.value)} /></div>
+        <div><Label htmlFor="workspace-application-status">Status</Label><NativeSelect id="workspace-application-status" value={applicationStatus} onChange={(event) => setApplicationStatus(event.target.value as "active" | "archived")}><NativeSelectOption value="active">Active</NativeSelectOption><NativeSelectOption value="archived">Archived</NativeSelectOption></NativeSelect></div>
+        <div><Label htmlFor="workspace-application-description">Description <span>Optional</span></Label><Textarea id="workspace-application-description" placeholder="Brief scope, goals, or delivery notes…" value={applicationDescription} maxLength={4000} onChange={(event) => setApplicationDescription(event.target.value)} /></div>
+        {applicationError && <p className="form-error" role="alert">{applicationError}</p>}
+      </form>
+      <DialogFooter showCloseButton><Button type="submit" form="application-workspace-editor" isDisabled={savingApplication || !applicationName.trim()}>{savingApplication ? "Saving…" : "Save changes"}</Button></DialogFooter>
+    </Dialog>
+  </div>;
 }

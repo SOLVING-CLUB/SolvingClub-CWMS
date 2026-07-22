@@ -1,7 +1,10 @@
-import { describe, it, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { getTestEnv, clientDb } from "./testEnv";
+import { listProjectsByClient } from "./projects";
+import { listApplicationsByProject, subscribeApplicationsByClient } from "./applications";
+import { listTasks } from "./tasks";
 
 async function seed() {
   const env = await getTestEnv();
@@ -9,8 +12,14 @@ async function seed() {
     const d = ctx.firestore();
     await setDoc(doc(d, "clients/c1"), { name: "Acme" });
     await setDoc(doc(d, "clients/c2"), { name: "Other" });
-    await setDoc(doc(d, "projects/p1"), { clientId: "c1", name: "P1" });
-    await setDoc(doc(d, "tasks/t1"), { clientId: "c1", title: "T1", status: "todo", priority: 3, order: 1 });
+    await setDoc(doc(d, "projects/p1"), { clientId: "c1", name: "P1", status: "active", createdAt: 1 });
+    await setDoc(doc(d, "applications/a1"), {
+      projectId: "p1", clientId: "c1", name: "App 1", status: "active", createdAt: 1,
+    });
+    await setDoc(doc(d, "tasks/t1"), {
+      applicationId: "a1", projectId: "p1", clientId: "c1", title: "T1",
+      status: "todo", priority: 3, order: 1, createdBy: "u1", createdAt: 1,
+    });
     await setDoc(doc(d, "tasks/t2"), { clientId: "c2", title: "T2", status: "todo", priority: 3, order: 1 });
     await setDoc(doc(d, "notifications/n1"), {
       recipientType: "client", recipientId: "c1", title: "For c1", read: false, createdAt: 1,
@@ -47,6 +56,22 @@ describe("client-scoped rules", () => {
     await assertSucceeds(getDoc(doc(db, "clients/c1")));
     await assertSucceeds(getDoc(doc(db, "projects/p1")));
     await assertFails(getDoc(doc(db, "tasks/t2")));
+  });
+
+  it("lists its complete project hierarchy with client-scoped queries", async () => {
+    const db = await clientDb("client1", "c1");
+    await expect(listProjectsByClient(db, "c1")).resolves.toHaveLength(1);
+    await expect(listApplicationsByProject(db, "p1", "c1")).resolves.toHaveLength(1);
+    await expect(listTasks(db, { applicationId: "a1", clientId: "c1" })).resolves.toHaveLength(1);
+  });
+
+  it("can stream its own applications with the client ownership constraint", async () => {
+    const db = await clientDb("client1", "c1");
+    await new Promise<void>((resolve, reject) => {
+      const stop = subscribeApplicationsByClient(db, "c1", (items) => {
+        try { expect(items).toHaveLength(1); stop(); resolve(); } catch (error) { stop(); reject(error); }
+      }, reject);
+    });
   });
 
   it("may reprioritize its own task but not edit the title", async () => {

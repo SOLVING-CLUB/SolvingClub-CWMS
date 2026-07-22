@@ -1,66 +1,68 @@
-import { useEffect, useState } from "react";
-import { markNotificationRead, type Notification } from "@solvingclub/core";
+import { useEffect, useState, type Key } from "react";
+import { markNotificationRead, markNotificationsRead, type Notification } from "@solvingclub/core";
+import type { Unsubscribe } from "firebase/firestore";
 import { db } from "../db";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Bell, CheckCheck, ExternalLink } from "lucide-react";
+
+function timeAgo(timestamp: number) {
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return "Now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return days < 7 ? `${days}d` : new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export function NotificationBell(
-  { fetchNotifications }: { fetchNotifications: () => Promise<Notification[]> },
+  { subscribeNotifications }: {
+    subscribeNotifications: (onData: (notifications: Notification[]) => void, onError: () => void) => Unsubscribe;
+  },
 ) {
   const [items, setItems] = useState<Notification[]>([]);
-  const [open, setOpen] = useState(false);
-
-  async function refresh() { setItems(await fetchNotifications()); }
+  const [listenerError, setListenerError] = useState(false);
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 30000);
-    return () => clearInterval(interval);
+    return subscribeNotifications((notifications) => { setItems(notifications); setListenerError(false); }, () => setListenerError(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const unread = items.filter((n) => !n.read).length;
+  const unreadItems = items.filter((item) => !item.read);
+
+  async function act(key: Key) {
+    if (key === "__mark_all") {
+      await markNotificationsRead(db, unreadItems.map((item) => item.id));
+      return;
+    }
+    const item = items.find((notification) => notification.id === String(key));
+    if (!item) return;
+    if (!item.read) await markNotificationRead(db, item.id);
+    if (item.link?.startsWith("/")) window.location.assign(item.link);
+  }
 
   return (
-    <div style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ position: "relative" }}>
-        Notifications
-        {unread > 0 && (
-          <span className="mono" style={{
-            marginLeft: 6, background: "var(--accent)", color: "var(--accent-ink)",
-            fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 8,
-          }}>
-            {unread}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div className="card" style={{
-          position: "absolute", right: 0, top: "calc(100% + 6px)", width: 300, zIndex: 10, padding: 0,
-          maxHeight: 360, overflowY: "auto",
-        }}>
-          {items.length === 0 ? (
-            <p className="empty-state" style={{ padding: 14 }}>No notifications.</p>
-          ) : (
-            items.map((n, i) => (
-              <div key={n.id} style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
-                borderBottom: i < items.length - 1 ? "1px solid var(--line)" : "none",
-                opacity: n.read ? 0.55 : 1,
-              }}>
-                <span style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: n.read ? "transparent" : "var(--accent)", flexShrink: 0,
-                }} />
-                <span style={{ fontSize: 13, flex: 1 }}>{n.title}</span>
-                {!n.read && (
-                  <button onClick={async () => { await markNotificationRead(db, n.id); await refresh(); }}
-                    style={{ fontSize: 11, padding: "3px 7px", flexShrink: 0 }}>
-                    Mark read
-                  </button>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
+    <DropdownMenuTrigger>
+      <Button aria-label={unreadItems.length ? `Notifications, ${unreadItems.length} unread` : "Notifications"} variant="ghost" size="icon-sm" className="notification-trigger">
+        <Bell />
+        {unreadItems.length > 0 && <span className="notification-count">{unreadItems.length > 9 ? "9+" : unreadItems.length}</span>}
+      </Button>
+      <DropdownMenu placement="bottom end" className="notification-menu" onAction={act}>
+        <DropdownMenuLabel className="notification-menu-header">
+          <span><strong>Notifications</strong><small>{unreadItems.length} unread</small></span>
+        </DropdownMenuLabel>
+        {unreadItems.length > 0 && <><DropdownMenuItem id="__mark_all" className="notification-mark-all"><CheckCheck /> Mark all as read</DropdownMenuItem><DropdownMenuSeparator /></>}
+        {listenerError && <><DropdownMenuItem id="__listener_error" isDisabled className="notification-listener-error">Live updates paused. Reopen the app to retry.</DropdownMenuItem><DropdownMenuSeparator /></>}
+        {items.length === 0 ? <DropdownMenuItem id="__empty" isDisabled className="notification-empty">You’re all caught up.</DropdownMenuItem> : items.slice(0, 12).map((item) => (
+          <DropdownMenuItem key={item.id} id={item.id} textValue={item.title} className={`notification-menu-item${item.read ? " read" : ""}`}>
+            <span className="notification-dot" />
+            <span className="notification-copy"><strong>{item.title}</strong>{item.body && <small>{item.body}</small>}<time>{timeAgo(item.createdAt)} ago</time></span>
+            {item.link && <ExternalLink className="notification-link-icon" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenu>
+    </DropdownMenuTrigger>
   );
 }

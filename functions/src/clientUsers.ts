@@ -9,7 +9,7 @@ const createSchema = z.object({
 });
 
 /** Create a Firebase Auth login for a client, tagged with role=client + clientId. */
-export const createClientUser = onCall(async (request) => {
+export const createClientUser = onCall({ invoker: "public" }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
 
   const parsed = createSchema.safeParse(request.data);
@@ -25,8 +25,13 @@ export const createClientUser = onCall(async (request) => {
   } catch {
     throw new HttpsError("already-exists", "That email is already registered.");
   }
-  await auth.setCustomUserClaims(user.uid, { role: "client", clientId });
-  await db.doc(`clients/${clientId}`).set({ authUid: user.uid, loginEmail: email }, { merge: true });
+  try {
+    await auth.setCustomUserClaims(user.uid, { role: "client", clientId });
+    await db.doc(`clients/${clientId}`).set({ authUid: user.uid, loginEmail: email }, { merge: true });
+  } catch {
+    await auth.deleteUser(user.uid).catch(() => undefined);
+    throw new HttpsError("internal", "The client login could not be saved.");
+  }
 
   return { uid: user.uid };
 });
@@ -37,7 +42,7 @@ const resetSchema = z.object({
 });
 
 /** Reset a client's login password (owner/admin only). */
-export const resetClientPassword = onCall(async (request) => {
+export const resetClientPassword = onCall({ invoker: "public" }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
 
   const parsed = resetSchema.safeParse(request.data);

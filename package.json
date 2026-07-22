@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "pnpm -r test",
+    "test": "firebase emulators:exec --only firestore \"pnpm -r test\"",
     "build": "pnpm -r build"
   },
   "devDependencies": {

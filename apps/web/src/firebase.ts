@@ -5,6 +5,7 @@ const config = {
   authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FB_PROJECT_ID,
   appId: import.meta.env.VITE_FB_APP_ID,
+  storageBucket: import.meta.env.VITE_FB_STORAGE_BUCKET,
 };
 
 export const fb: FirebaseServices = initFirebase(config);

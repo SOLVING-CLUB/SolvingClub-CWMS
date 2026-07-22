@@ -20,13 +20,31 @@ export function getTestEnv(): Promise<RulesTestEnvironment> {
   return envPromise;
 }
 
-export async function seedMember(uid: string): Promise<void> {
+export async function seedMember(uid: string, role: "owner" | "admin" | "member" = "owner", status: "active" | "disabled" = "active"): Promise<void> {
   const env = await getTestEnv();
   await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore() as unknown as Firestore, `members/${uid}`), {
       uid, name: "Test", email: `${uid}@test.com`,
-      role: "owner", status: "active", createdAt: 1,
+      role, status, createdAt: 1,
     });
+  });
+}
+
+export async function seedHierarchy({ clientId = "c1", projectId = "p1", applicationId = "a1" } = {}): Promise<void> {
+  const env = await getTestEnv();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const firestore = ctx.firestore() as unknown as Firestore;
+    await setDoc(doc(firestore, `clients/${clientId}`), { name: clientId, email: `${clientId}@test.com`, status: "active", createdAt: 1 });
+    await setDoc(doc(firestore, `projects/${projectId}`), { clientId, name: projectId, status: "active", createdAt: 1 });
+    await setDoc(doc(firestore, `applications/${applicationId}`), { projectId, clientId, name: applicationId, status: "active", createdAt: 1 });
+  });
+}
+
+export async function seedClient(clientId = "c1"): Promise<void> {
+  const env = await getTestEnv();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const firestore = ctx.firestore() as unknown as Firestore;
+    await setDoc(doc(firestore, `clients/${clientId}`), { name: clientId, email: `${clientId}@test.com`, status: "active", createdAt: 1 });
   });
 }
 
