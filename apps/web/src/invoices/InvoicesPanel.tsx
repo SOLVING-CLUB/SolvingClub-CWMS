@@ -36,13 +36,14 @@ export function InvoicesPanel({ clientId, canEdit }: { clientId: string; canEdit
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     return subscribeInvoicesByClient(db, clientId, (items) => {
-      setInvoices(items); setError(false); setLoading(false);
-    }, () => { setError(true); setLoading(false); });
+      setInvoices(items); setLoadError(false); setLoading(false);
+    }, () => { setLoadError(true); setLoading(false); });
   }, [clientId]);
 
   const summary = useMemo(() => ({
@@ -55,16 +56,17 @@ export function InvoicesPanel({ clientId, canEdit }: { clientId: string; canEdit
   async function changeStatus(invoiceId: string, status: InvoiceStatus) {
     try {
       await updateInvoiceStatus(db, invoiceId, status);
-      setError(false);
+      setActionError(null);
     } catch {
-      setError(true);
+      setActionError("This invoice status change could not be saved. Please try again.");
     }
   }
 
   return (
     <div className="invoice-panel">
       <div className="invoice-toolbar"><div><ReceiptText /><span>{invoices.length} invoice{invoices.length === 1 ? "" : "s"}</span></div>{canEdit && <Button variant="outline" size="sm" onPress={() => setShowForm((value) => !value)}><Plus /> {showForm ? "Close form" : "New invoice"}</Button>}</div>
-      {error && <div className="data-error" role="alert"><CircleAlert /> Invoices could not be loaded. Refresh to try again.</div>}
+      {loadError && <div className="data-error" role="alert"><CircleAlert /> Invoices could not be loaded. Refresh to try again.</div>}
+      {actionError && <div className="data-error" role="alert"><CircleAlert /> {actionError}</div>}
       {!loading && invoices.length > 0 && <section className="invoice-summary" aria-label="Billing summary">
         <div><span>Outstanding</span><strong>{summary.outstanding.join(" · ") || "—"}</strong></div>
         <div><span>Paid</span><strong>{summary.paid.join(" · ") || "—"}</strong></div>

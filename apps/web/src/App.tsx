@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import("./auth/LoginPage").then((module) => ({ defa
 const Shell = lazy(() => import("./ui/Shell").then((module) => ({ default: module.Shell })));
 const ClientsPage = lazy(() => import("./clients/ClientsPage").then((module) => ({ default: module.ClientsPage })));
 const ClientDetailPage = lazy(() => import("./clients/ClientDetailPage").then((module) => ({ default: module.ClientDetailPage })));
+const ClientDetailsPage = lazy(() => import("./clients/ClientDetailsPage").then((module) => ({ default: module.ClientDetailsPage })));
 const TasksPage = lazy(() => import("./tasks/TasksPage").then((module) => ({ default: module.TasksPage })));
 const ClientPortal = lazy(() => import("./portal/ClientPortal").then((module) => ({ default: module.ClientPortal })));
 const OverviewPage = lazy(() => import("./dashboard/OverviewPage").then((module) => ({ default: module.OverviewPage })));
@@ -18,6 +19,7 @@ const MembersPage = lazy(() => import("./members/MembersPage").then((module) => 
 const ProjectsPage = lazy(() => import("./projects/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
 const ApplicationsPage = lazy(() => import("./projects/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
 const ProjectDetailPage = lazy(() => import("./projects/ProjectDetailPage").then((module) => ({ default: module.ProjectDetailPage })));
+const StoragePage = lazy(() => import("./storage/StoragePage").then((module) => ({ default: module.StoragePage })));
 
 function AppLoading() {
   return <div className="app-loading" role="status" aria-live="polite">
@@ -33,6 +35,7 @@ const router = createBrowserRouter([
       { index: true, element: <OverviewPage /> },
       { path: "clients", element: <ClientsPage /> },
       { path: "clients/:clientId", element: <ClientDetailPage /> },
+      { path: "clients/:clientId/details", element: <ClientDetailsPage /> },
       { path: "clients/:clientId/apps/:applicationId", element: <TasksPage /> },
       { path: "work", element: <WorkspaceTasksPage /> },
       { path: "projects", element: <ProjectsPage /> },
@@ -40,6 +43,7 @@ const router = createBrowserRouter([
       { path: "applications", element: <ApplicationsPage /> },
       { path: "applications/:clientId/:applicationId", element: <TasksPage /> },
       { path: "members", element: <MembersPage /> },
+      { path: "storage", element: <StoragePage /> },
     ],
   },
 ]);

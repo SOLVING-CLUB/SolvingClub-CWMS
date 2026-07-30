@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { PriorityBadge } from "../ui/PrioritySelect";
 import { StatusTag, type StatusTone } from "../ui/StatusTag";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Documents } from "../documents/Documents";
+import { canAdmin, useSession } from "../auth/SessionContext";
 
 const STATUS_TONE: Record<Task["status"], StatusTone> = {
   todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done",
@@ -33,6 +35,7 @@ function dueLabel(dueDate?: number) {
 
 export function OverviewPage() {
   const navigate = useNavigate();
+  const session = useSession();
   const [clients, setClients] = useState<Client[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,13 +57,15 @@ export function OverviewPage() {
     const overdue = open.filter((task) => task.dueDate && task.dueDate < now).length;
     const dueSoon = open.filter((task) => task.dueDate && task.dueDate >= now && task.dueDate <= now + 7 * 86_400_000).length;
     const blocked = open.filter((task) => task.status === "blocked").length;
+    const atRisk = open.filter((task) => task.status === "blocked" || Boolean(task.dueDate && task.dueDate < now)).length;
     const completion = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
     const clientMap = new Map(clients.map((client) => [client.id, client]));
     const focus = [...open]
-      .sort((a, b) => Number(Boolean(b.dueDate && b.dueDate < now)) - Number(Boolean(a.dueDate && a.dueDate < now))
+      .sort((a, b) => Number(b.status === "blocked") - Number(a.status === "blocked")
+        || Number(Boolean(b.dueDate && b.dueDate < now)) - Number(Boolean(a.dueDate && a.dueDate < now))
         || a.priority - b.priority || (a.dueDate ?? Infinity) - (b.dueDate ?? Infinity))
       .slice(0, 7);
-    return { open, completed, overdue, dueSoon, blocked, completion, clientMap, focus };
+    return { open, completed, overdue, dueSoon, blocked, atRisk, completion, clientMap, focus };
   }, [clients, tasks]);
 
   return (
@@ -75,7 +80,7 @@ export function OverviewPage() {
         <img className="delivery-brief-art" src="/visuals/delivery-routing.jpg" alt="" aria-hidden="true" />
         <div className="delivery-brief-copy">
           <span className="signal-kicker"><Sparkles /> Delivery pulse</span>
-          <strong>{data.blocked || data.overdue ? `${data.blocked + data.overdue} items need attention` : "Delivery is moving cleanly"}</strong>
+          <strong>{data.atRisk ? `${data.atRisk} item${data.atRisk === 1 ? "" : "s"} need attention` : "Delivery is moving cleanly"}</strong>
           <p>{data.open.length} open tasks across {clients.length} client{clients.length === 1 ? "" : "s"}. {data.dueSoon ? `${data.dueSoon} due in the next seven days.` : "No deadlines in the next seven days."}</p>
         </div>
         <div className="delivery-score" aria-label={`${data.completion}% of all tasks completed`}>
@@ -85,10 +90,10 @@ export function OverviewPage() {
       </section>
 
       <section className="pulse-grid" aria-label="Workspace status">
-        <div className="pulse-card"><span>Active clients</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{clients.length}</strong>}<Building2 /><small>In the workspace</small></div>
-        <div className="pulse-card"><span>Open work</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.open.length}</strong>}<CalendarClock /><small>{data.dueSoon} due soon</small></div>
-        <div className="pulse-card risk"><span>At risk</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.blocked + data.overdue}</strong>}<CircleAlert /><small>{data.blocked} blocked · {data.overdue} overdue</small></div>
-        <div className="pulse-card"><span>Completed</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.completed}</strong>}<CheckCircle2 /><small>All-time tasks</small></div>
+        <Link className="pulse-card" to="/clients"><span>Active clients</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{clients.length}</strong>}<Building2 /><small>Open client directory</small></Link>
+        <Link className="pulse-card" to="/work?open=1"><span>Open work</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.open.length}</strong>}<CalendarClock /><small>{data.dueSoon} due soon</small></Link>
+        <Link className="pulse-card risk" to="/work?risk=1"><span>At risk</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.atRisk}</strong>}<CircleAlert /><small>{data.blocked} blocked · {data.overdue} overdue</small></Link>
+        <Link className="pulse-card" to="/work?status=done"><span>Completed</span>{loading ? <Skeleton className="h-8 w-12" /> : <strong>{data.completed}</strong>}<CheckCircle2 /><small>View delivered tasks</small></Link>
       </section>
 
       <div className="overview-grid">
@@ -96,7 +101,7 @@ export function OverviewPage() {
           <CardHeader className="border-b"><div><CardTitle>Attention queue</CardTitle><p>Ordered by risk, priority, then deadline.</p></div><Badge variant="secondary">{data.focus.length} shown</Badge></CardHeader>
           <CardContent className="p-0">
             {loading ? <div className="overview-loading">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-12 w-full" />)}</div> : data.focus.length === 0 ? <div className="quiet-empty">No open work. The queue is clear.</div> : data.focus.map((task) => (
-              <Link className="work-row actionable" key={task.id} to={`/clients/${task.clientId}/apps/${task.applicationId}`}>
+              <Link className="work-row actionable" key={task.id} to={`/applications/${task.clientId}/${task.applicationId}`}>
                 <StatusTag tone={STATUS_TONE[task.status]}>{task.status.replace("_", " ")}</StatusTag>
                 <div><strong>{task.title}</strong><small>{data.clientMap.get(task.clientId)?.name ?? "Client"}</small></div>
                 <PriorityBadge value={task.priority} />
@@ -124,6 +129,18 @@ export function OverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="border-b">
+          <div>
+            <CardTitle>SolvingClub management files</CardTitle>
+            <p>Internal templates, ops docs, and shared CWMS references.</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Documents ownerType="workspace" ownerId="__workspace__" clientId="__workspace__" canEdit={canAdmin(session.role)} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

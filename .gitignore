@@ -5,8 +5,9 @@ dist/
 functions/serviceAccount*.json
 .firebase/
 *-debug.log
-firestore-debug.log
-ui-debug.log
 !.env.example
 !**/.env.example
 functions/lib/
+# Local agent/editor settings; may hold machine-local tokens.
+.claude/settings.local.json
+.playwright-mcp/

@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 import { assertOwnerOrAdmin, db } from "./admin.js";
-import { deleteDriveFile, driveSaKeyJson } from "./drive.js";
+import { deleteDriveFile, driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey } from "./drive.js";
 
 const idSchema = z.object({ id: z.string().min(1).max(200) });
 
@@ -33,7 +33,7 @@ async function descendants(applicationIds: string[], taskIds: string[], clientId
   ];
 }
 
-export const deleteApplicationTree = onCall({ invoker: "public", secrets: [driveSaKeyJson] }, async (request) => {
+export const deleteApplicationTree = onCall({ invoker: "public", secrets: [driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey] }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
   const parsed = idSchema.safeParse(request.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid application id.");
@@ -49,7 +49,7 @@ export const deleteApplicationTree = onCall({ invoker: "public", secrets: [drive
   return { deleted: count };
 });
 
-export const deleteProjectTree = onCall({ invoker: "public", secrets: [driveSaKeyJson] }, async (request) => {
+export const deleteProjectTree = onCall({ invoker: "public", secrets: [driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey] }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
   const parsed = idSchema.safeParse(request.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid project id.");
@@ -76,7 +76,7 @@ export const deleteProjectTree = onCall({ invoker: "public", secrets: [driveSaKe
   return { deleted: count };
 });
 
-export const deleteTaskTree = onCall({ invoker: "public", secrets: [driveSaKeyJson] }, async (request) => {
+export const deleteTaskTree = onCall({ invoker: "public", secrets: [driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey] }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
   const parsed = idSchema.safeParse(request.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid task id.");

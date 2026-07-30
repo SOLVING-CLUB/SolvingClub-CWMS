@@ -6,6 +6,7 @@ import { createMemberUser, updateMemberUser } from "../functions";
 import { useSession } from "../auth/SessionContext";
 import { PageHeader } from "../ui/PageHeader";
 import { EmptyState } from "../ui/EmptyState";
+import { PasswordInput } from "../ui/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,7 +103,7 @@ export function MembersPage() {
       <form id="create-member" onSubmit={create} className="dialog-form">
         <div><Label htmlFor="member-name">Full name</Label><Input id="member-name" autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div><Label htmlFor="member-email">Email</Label><Input id="member-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        <div><Label htmlFor="member-password">Temporary password</Label><Input id="member-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} /><small>Use at least 8 characters and share it securely.</small></div>
+        <div><Label htmlFor="member-password">Temporary password</Label><PasswordInput id="member-password" autoComplete="new-password" minLength={8} maxLength={128} value={password} toggleDisabled={busy} onChange={(e) => setPassword(e.target.value)} /><small>Use at least 8 characters and share it securely.</small></div>
         <div><Label htmlFor="member-role">Initial role</Label><NativeSelect id="member-role" value={role} onChange={(e) => setRole(e.target.value as "admin" | "member")}><NativeSelectOption value="member">Member — assigned delivery work</NativeSelectOption><NativeSelectOption value="admin">Admin — all clients and delivery work</NativeSelectOption></NativeSelect></div>
         {error && <p className="form-error" role="alert">{error}</p>}
       </form>

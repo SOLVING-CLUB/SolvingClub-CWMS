@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { subscribeMemberNotifications } from "@solvingclub/core";
 import {
-  Boxes, BriefcaseBusiness, Command, FolderKanban, LayoutDashboard, LogOut, Search, SquareCheckBig, Users,
+  Boxes, BriefcaseBusiness, Command, FolderKanban, HardDriveDownload, LayoutDashboard, LogOut, Search, SquareCheckBig, Users,
 } from "lucide-react";
 import { fb } from "../firebase";
 import { db } from "../db";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "./BrandLogo";
 import { GlobalSearchDialog } from "./GlobalSearchDialog";
-import { useSession } from "../auth/SessionContext";
+import { canAdmin, useSession } from "../auth/SessionContext";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
@@ -29,6 +29,7 @@ function routeLabel(pathname: string) {
   if (pathname === "/applications") return "Applications";
   if (pathname.startsWith("/applications/")) return "Application workspace";
   if (pathname.startsWith("/members")) return "Members";
+  if (pathname.startsWith("/storage")) return "Storage";
   if (pathname.includes("/apps/")) return "Application tasks";
   if (pathname !== "/clients" && pathname.startsWith("/clients/")) return "Client workspace";
   return "Clients";
@@ -47,9 +48,12 @@ export function Shell() {
   }, []);
   return (
     <div className="workspace-shell">
+      <a className="skip-link" href="#workspace-main-content">Skip to main content</a>
       <aside className="workspace-sidebar">
         <div className="workspace-switcher">
-          <BrandLogo className="workspace-brand-logo" />
+          <NavLink to="/" end className="workspace-brand-link" aria-label="Solving Club dashboard">
+            <BrandLogo className="workspace-brand-logo" />
+          </NavLink>
           <span className="workspace-edition">Delivery OS</span>
         </div>
 
@@ -62,6 +66,7 @@ export function Shell() {
               <Icon /><span>{label}</span>
             </NavLink>
           ))}
+          {canAdmin(session.role) && <NavLink to="/storage" className={({ isActive }) => `workspace-link${isActive ? " active" : ""}`}><HardDriveDownload /><span>Storage</span></NavLink>}
           {session.role === "owner" && <NavLink to="/members" className={({ isActive }) => `workspace-link${isActive ? " active" : ""}`}><Users /><span>Members</span></NavLink>}
         </nav>
 
@@ -85,7 +90,7 @@ export function Shell() {
             }} />
           </div>
         </header>
-        <main className="workspace-content"><Outlet /></main>
+        <main id="workspace-main-content" className="workspace-content" tabIndex={-1}><Outlet /></main>
       </section>
       <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>

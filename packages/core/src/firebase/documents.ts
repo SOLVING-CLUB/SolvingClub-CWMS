@@ -1,17 +1,30 @@
 import {
   collection, addDoc, getDocs, onSnapshot, query, where, doc, deleteDoc, type Firestore, type Unsubscribe,
 } from "firebase/firestore";
-import { parseDocument, type Document, type OwnerType } from "../models/document";
+import {
+  parseDocument,
+  type Document,
+  type DocumentAccessLevel,
+  type OwnerType,
+} from "../models/document";
 
 export async function addLinkedDocument(
   db: Firestore,
-  input: { label: string; url: string; ownerType: OwnerType; ownerId: string; clientId: string; uploadedBy: string },
+  input: {
+    label: string;
+    url: string;
+    accessLevel: DocumentAccessLevel;
+    ownerType: OwnerType;
+    ownerId: string;
+    clientId: string;
+    uploadedBy: string;
+  },
 ): Promise<Document> {
   const createdAt = Date.now();
   const kind = "linked" as const;
   const candidate = parseDocument({ id: "pending", kind, ...input, createdAt });
   const ref = await addDoc(collection(db, "documents"), {
-    kind: candidate.kind, label: candidate.label, url: candidate.url,
+    kind: candidate.kind, label: candidate.label, url: candidate.url, accessLevel: candidate.accessLevel,
     ownerType: candidate.ownerType, ownerId: candidate.ownerId,
     clientId: candidate.clientId, uploadedBy: candidate.uploadedBy, createdAt: candidate.createdAt,
   });
@@ -27,6 +40,18 @@ export async function listDocuments(db: Firestore, ownerId: string): Promise<Doc
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/** Lists every document visible in one client workspace, newest first. */
+export async function listDocumentsByClient(db: Firestore, clientId: string): Promise<Document[]> {
+  const snap = await getDocs(query(
+    collection(db, "documents"),
+    where("clientId", "==", clientId),
+    where("accessLevel", "==", "client"),
+  ));
+  return snap.docs
+    .map((item) => parseDocument({ id: item.id, ...item.data() }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 /** Streams documents linked to one workspace record without requiring a composite index. */
 export function subscribeDocuments(
   db: Firestore, ownerId: string, onData: (documents: Document[]) => void, onError?: (error: Error) => void,
@@ -36,6 +61,23 @@ export function subscribeDocuments(
     (snapshot) => onData(snapshot.docs
       .map((item) => parseDocument({ id: item.id, ...item.data() }))
       .sort((a, b) => a.createdAt - b.createdAt)),
+    (error) => onError?.(error),
+  );
+}
+
+/** Streams all documents shared with one client across client, project, application, and task records. */
+export function subscribeDocumentsByClient(
+  db: Firestore, clientId: string, onData: (documents: Document[]) => void, onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    query(
+      collection(db, "documents"),
+      where("clientId", "==", clientId),
+      where("accessLevel", "==", "client"),
+    ),
+    (snapshot) => onData(snapshot.docs
+      .map((item) => parseDocument({ id: item.id, ...item.data() }))
+      .sort((a, b) => b.createdAt - a.createdAt)),
     (error) => onError?.(error),
   );
 }

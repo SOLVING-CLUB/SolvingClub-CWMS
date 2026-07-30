@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   subscribeApplications, subscribeClients, subscribeMembers, subscribeProjects, subscribeTasks, updateTask,
   type Application, type Client, type Member, type Project, type Task, type TaskStatus,
@@ -21,6 +21,11 @@ import { canEditTask } from "../lib/workspace";
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
 const TONES: Record<TaskStatus, StatusTone> = { todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done" };
 type DeadlineFilter = "" | "overdue" | "today" | "week" | "none";
+const DEADLINE_FILTERS: DeadlineFilter[] = ["", "overdue", "today", "week", "none"];
+
+function initialParam(params: URLSearchParams, key: string, maxLength = 240) {
+  return (params.get(key) ?? "").slice(0, maxLength);
+}
 
 function dayBounds() {
   const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -41,20 +46,33 @@ function dueLabel(dueDate?: number) {
 export function WorkspaceTasksPage() {
   const session = useSession();
   const admin = canAdmin(session.role);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [status, setStatus] = useState<TaskStatus | "">("");
-  const [assignee, setAssignee] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [priority, setPriority] = useState("");
-  const [deadline, setDeadline] = useState<DeadlineFilter>("");
-  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<TaskStatus | "">(() => {
+    const value = searchParams.get("status");
+    return value && STATUSES.includes(value as TaskStatus) ? value as TaskStatus : "";
+  });
+  const [openOnly, setOpenOnly] = useState(() => searchParams.get("open") === "1");
+  const [riskOnly, setRiskOnly] = useState(() => searchParams.get("risk") === "1");
+  const [assignee, setAssignee] = useState(() => initialParam(searchParams, "assignee", 256));
+  const [clientId, setClientId] = useState(() => initialParam(searchParams, "client", 256));
+  const [priority, setPriority] = useState(() => {
+    const value = initialParam(searchParams, "priority", 1);
+    return PRIORITIES.some((item) => String(item.value) === value) ? value : "";
+  });
+  const [deadline, setDeadline] = useState<DeadlineFilter>(() => {
+    const value = initialParam(searchParams, "deadline", 16) as DeadlineFilter;
+    return DEADLINE_FILTERS.includes(value) ? value : "";
+  });
+  const [search, setSearch] = useState(() => initialParam(searchParams, "q"));
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let readyCount = 0;
@@ -78,6 +96,8 @@ export function WorkspaceTasksPage() {
     const applicationLookup = new Map(applications.map((item) => [item.id, item]));
     const result = tasks.filter((task) => {
       if (status && task.status !== status) return false;
+      if (openOnly && task.status === "done") return false;
+      if (riskOnly && task.status !== "blocked" && (!task.dueDate || task.dueDate >= start || task.status === "done")) return false;
       if (assignee === "__unassigned" && task.assigneeUid) return false;
       if (assignee && assignee !== "__unassigned" && task.assigneeUid !== assignee) return false;
       if (clientId && task.clientId !== clientId) return false;
@@ -103,10 +123,27 @@ export function WorkspaceTasksPage() {
       },
       clientMap: clientLookup, projectMap: projectLookup, applicationMap: applicationLookup,
     };
-  }, [tasks, clients, projects, applications, status, assignee, clientId, priority, deadline, search]);
+  }, [tasks, clients, projects, applications, status, openOnly, riskOnly, assignee, clientId, priority, deadline, search]);
 
-  const filtersActive = Boolean(status || assignee || clientId || priority || deadline || search);
-  function clearFilters() { setStatus(""); setAssignee(""); setClientId(""); setPriority(""); setDeadline(""); setSearch(""); }
+  const filtersActive = Boolean(status || openOnly || riskOnly || assignee || clientId || priority || deadline || search);
+  function clearFilters() { setStatus(""); setOpenOnly(false); setRiskOnly(false); setAssignee(""); setClientId(""); setPriority(""); setDeadline(""); setSearch(""); }
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (status) next.set("status", status);
+    if (openOnly) next.set("open", "1");
+    if (riskOnly) next.set("risk", "1");
+    if (assignee) next.set("assignee", assignee);
+    if (clientId) next.set("client", clientId);
+    if (priority) next.set("priority", priority);
+    if (deadline) next.set("deadline", deadline);
+    if (search) next.set("q", search);
+    const nextText = next.toString();
+    if (nextText !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [status, openOnly, riskOnly, assignee, clientId, priority, deadline, search, searchParams, setSearchParams]);
+  async function updateTaskSafely(id: string, patch: Parameters<typeof updateTask>[2]) {
+    try { await updateTask(db, id, patch); setActionError(null); }
+    catch { setActionError("This task change could not be saved. Please try again."); }
+  }
 
   return (
     <div className="content-stack work-command-page">
@@ -133,6 +170,7 @@ export function WorkspaceTasksPage() {
       </div>
 
       {error && <div className="data-error" role="alert"><CircleAlert /> Work could not be loaded. Refresh the page to try again.</div>}
+      {actionError && <div className="data-error" role="alert"><CircleAlert /> {actionError}</div>}
       {loading ? <div className="work-list work-loading">{[1,2,3,4,5].map((item) => <Skeleton key={item} className="h-14 w-full" />)}</div> : visible.length === 0 ? <EmptyState icon={<CheckSquare2 />} title={filtersActive ? "No matching work" : "Queue is clear"} description={filtersActive ? "Clear a filter or broaden your search." : "New tasks will appear here as delivery work is created."} action={filtersActive ? <Button variant="outline" onPress={clearFilters}>Clear filters</Button> : undefined} imageSrc="/visuals/delivery-routing.jpg" imageAlt="Abstract delivery routing system" /> : (
         <div className="work-list command-work-list">
           <div className="work-list-head"><span>Status</span><span>Task and context</span><span>Owner</span><span>Priority</span><span>Deadline</span><span /></div>
@@ -140,12 +178,12 @@ export function WorkspaceTasksPage() {
             const editable = canEditTask(admin, session.uid, task.assigneeUid);
             const overdue = task.status !== "done" && Boolean(task.dueDate && task.dueDate < Date.now());
             return <div className={`command-work-item${overdue ? " overdue" : ""}`} key={task.id}>
-              <StatusSelect isDisabled={!editable} value={task.status} tone={TONES[task.status]} options={STATUSES} onChange={(next) => updateTask(db, task.id, { status: next })} />
+              <StatusSelect isDisabled={!editable} value={task.status} tone={TONES[task.status]} options={STATUSES} onChange={(next) => updateTaskSafely(task.id, { status: next })} />
               <Link className="work-context" to={`/applications/${task.clientId}/${task.applicationId}`}>
                 <strong>{task.title}</strong><span>{clientMap.get(task.clientId)?.name ?? "Client"} <i>/</i> {projectMap.get(task.projectId)?.name ?? "Project"} <i>/</i> {applicationMap.get(task.applicationId)?.name ?? "Application"}</span>
               </Link>
               <span className="work-owner">{task.assigneeUid ? members.find((member) => member.uid === task.assigneeUid)?.name ?? "Assigned" : "Unassigned"}</span>
-              <PrioritySelect isDisabled={!editable} value={task.priority} label={`Priority for ${task.title}`} onChange={(next) => updateTask(db, task.id, { priority: next })} />
+              <PrioritySelect isDisabled={!editable} value={task.priority} label={`Priority for ${task.title}`} onChange={(next) => updateTaskSafely(task.id, { priority: next })} />
               <time className={overdue ? "overdue" : ""}><CalendarClock />{dueLabel(task.dueDate)}</time>
               <div className="work-row-actions"><Button aria-label={`Edit ${task.title}`} isDisabled={!editable} variant="ghost" size="icon-sm" onPress={() => setEditingTask(task)}><Pencil /></Button><Link aria-label={`Open ${task.title}`} to={`/applications/${task.clientId}/${task.applicationId}`}><ArrowRight /></Link></div>
             </div>;

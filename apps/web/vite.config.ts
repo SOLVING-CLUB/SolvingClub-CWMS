@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
@@ -7,6 +7,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
+  },
+  // jsdom so component behaviour (not just pure helpers) can be asserted.
+  test: {
+    environment: "jsdom",
+    globals: false,
+    restoreMocks: true,
   },
   build: {
     rollupOptions: {

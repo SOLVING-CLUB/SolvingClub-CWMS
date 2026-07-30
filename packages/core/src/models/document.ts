@@ -3,8 +3,11 @@ import { z } from "zod";
 export const documentKindSchema = z.enum(["managed", "linked"]);
 export type DocumentKind = z.infer<typeof documentKindSchema>;
 
-export const ownerTypeSchema = z.enum(["client", "project", "application", "task"]);
+export const ownerTypeSchema = z.enum(["workspace", "client", "project", "application", "task"]);
 export type OwnerType = z.infer<typeof ownerTypeSchema>;
+
+export const documentAccessLevelSchema = z.enum(["internal", "client"]);
+export type DocumentAccessLevel = z.infer<typeof documentAccessLevelSchema>;
 
 // Restrict to http(s) so a stored javascript: URL can never be rendered
 // as a clickable href (linked documents accept an arbitrary user-supplied URL).
@@ -24,6 +27,7 @@ export const documentSchema = z.object({
   url: httpUrlSchema,
   driveFileId: z.string().optional(),
   mimeType: z.string().optional(),
+  accessLevel: documentAccessLevelSchema.default("internal"),
   ownerType: ownerTypeSchema,
   ownerId: z.string().min(1),
   clientId: z.string().min(1),
