@@ -3,6 +3,7 @@ import { subscribeClient, type Client } from "@solvingclub/core";
 import { db } from "../db";
 import { createClientUser, resetClientPassword } from "../functions";
 import { StatusTag } from "../ui/StatusTag";
+import { PasswordInput } from "../ui/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +55,7 @@ export function ClientLoginPanel({ clientId }: { clientId: string }) {
       <DialogHeader><DialogTitle>{mode === "create" ? "Create client login" : "Reset client password"}</DialogTitle><DialogDescription>{mode === "create" ? "The client will sign in with this email and temporary password." : "The client’s existing sessions remain active until their token expires."}</DialogDescription></DialogHeader>
       <div className="dialog-form">
         {mode === "create" && <div><Label htmlFor="portal-email">Login email</Label><Input id="portal-email" type="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} /></div>}
-        <div><Label htmlFor="portal-password">{mode === "create" ? "Temporary password" : "New password"}</Label><Input id="portal-password" type="password" autoFocus={mode === "reset"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /><small>At least 6 characters.</small></div>
+        <div><Label htmlFor="portal-password">{mode === "create" ? "Temporary password" : "New password"}</Label><PasswordInput key={mode} id="portal-password" autoFocus={mode === "reset"} autoComplete="new-password" value={password} toggleDisabled={busy} onChange={(e) => setPassword(e.target.value)} /><small>At least 6 characters.</small></div>
         {error && <p className="form-error">{error}</p>}
       </div>
       <DialogFooter showCloseButton><Button isDisabled={busy || password.length < 6 || (mode === "create" && !email.includes("@"))} onPress={save}>{busy ? "Saving…" : mode === "create" ? "Create login" : "Update password"}</Button></DialogFooter>

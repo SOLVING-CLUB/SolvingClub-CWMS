@@ -8,6 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import { BrandLogo } from "../ui/BrandLogo";
+import { PasswordInput } from "../ui/PasswordInput";
+
+function normalizedEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function hasValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,8 +28,19 @@ export function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null); setMessage(null); setBusy(true);
+    const cleanEmail = normalizedEmail(email);
+    if (!hasValidEmail(cleanEmail)) {
+      setError("Enter a valid email address.");
+      setBusy(false);
+      return;
+    }
+    if (!password) {
+      setError("Enter your password to sign in.");
+      setBusy(false);
+      return;
+    }
     try {
-      await signInWithEmailAndPassword(fb.auth, email, password);
+      await signInWithEmailAndPassword(fb.auth, cleanEmail, password);
     } catch {
       setError("That email or password doesn't match our records.");
     } finally {
@@ -30,10 +50,12 @@ export function LoginPage() {
 
   async function resetPassword() {
     setError(null); setMessage(null);
-    if (!email.trim()) { setError("Enter your email address first."); return; }
+    const cleanEmail = normalizedEmail(email);
+    if (!cleanEmail) { setError("Enter your email address first."); return; }
+    if (!hasValidEmail(cleanEmail)) { setError("Enter a valid email address first."); return; }
     setBusy(true);
     try {
-      await sendPasswordResetEmail(fb.auth, email.trim());
+      await sendPasswordResetEmail(fb.auth, cleanEmail);
       setMessage("Password reset instructions have been sent if that account exists.");
     } catch {
       setError("We couldn't send a reset email. Check the address and try again.");
@@ -64,9 +86,9 @@ export function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="grid gap-4">
-            <div className="grid gap-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" placeholder="you@company.com" value={email} autoComplete="username" onChange={(e) => setEmail(e.target.value)} /></div>
-            <div className="grid gap-2"><div className="login-field-heading"><Label htmlFor="password">Password</Label><Button type="button" variant="link" size="sm" isDisabled={busy} onPress={resetPassword}>Forgot password?</Button></div><Input id="password" type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} /></div>
+          <form onSubmit={onSubmit} className="grid gap-4" noValidate>
+            <div className="grid gap-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="you@company.com" value={email} autoComplete="username" maxLength={254} aria-invalid={Boolean(error && !hasValidEmail(normalizedEmail(email)))} onChange={(e) => setEmail(e.target.value)} /></div>
+            <div className="grid gap-2"><div className="login-field-heading"><Label htmlFor="password">Password</Label><Button type="button" variant="link" size="sm" isDisabled={busy} onPress={resetPassword}>Forgot password?</Button></div><PasswordInput id="password" value={password} autoComplete="current-password" maxLength={1024} aria-invalid={Boolean(error && !password)} toggleDisabled={busy} onChange={(e) => setPassword(e.target.value)} /></div>
             <Button type="submit" className="w-full" isDisabled={busy}>{busy ? "Please wait…" : "Sign in"}</Button>
             {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
             {message && <Alert><AlertDescription>{message}</AlertDescription></Alert>}
