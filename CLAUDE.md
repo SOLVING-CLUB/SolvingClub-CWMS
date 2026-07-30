@@ -19,19 +19,28 @@ backend, single React SPA. Not multi-tenant: one workspace, one org, many client
 ## Commands
 
 ```bash
-pnpm test                  # firestore emulator + all package tests (needs Java 17+)
+pnpm emu                   # start the firestore emulator and leave it running
+pnpm test:fast             # all tests against that running emulator (~67s)
+pnpm test                  # self-contained: boots its own emulator (~98s, needs Java 17+)
 pnpm build                 # builds every package
-pnpm -C packages/core build   # tsc only
-pnpm -C apps/web build        # tsc --noEmit && vite build
-pnpm -C functions build       # tsc
 pnpm -C apps/web dev          # vite dev server (5173)
+pnpm -C apps/web build        # tsc --noEmit && vite build
+pnpm -C packages/core build   # tsc only
+pnpm -C functions build       # tsc
 ```
 
-Deploy (see `docs/go-live.md` for the full sequence):
+Test loop: keep `pnpm emu` running and use scoped runs while building
+(`pnpm -C apps/web test`, `pnpm -C packages/core test`), then one `pnpm test:fast`
+before shipping. Reach for the full `pnpm test` in CI or when nothing is running.
+
+Ship (see `docs/go-live.md` for the full sequence and secrets):
 ```bash
-pnpm exec firebase deploy --only firestore:rules,firestore:indexes,storage,functions,hosting \
-  --project solvingclub-cw-management
+pnpm ship        # web-only change: build web + deploy hosting (~30s)
+pnpm ship:all    # rules/functions/indexes changed too: build all + deploy everything
 ```
+Prefer `pnpm ship` — a functions deploy takes minutes, hosting takes seconds.
+Never ship without a green test run; `firestore.rules` is the only real
+authorization boundary and a bad deploy there exposes client data.
 
 Firebase projects: `default` = `solvingclub-cw-management` (production — **the only** real
 project; never create a substitute), `emulator` = `demo-solvingclub` (tests only).

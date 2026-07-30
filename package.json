@@ -3,8 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "emu": "firebase emulators:start --only firestore --project demo-solvingclub",
     "test": "firebase emulators:exec --only firestore \"pnpm -r test\"",
-    "build": "pnpm -r build"
+    "test:fast": "node scripts/require-emulator.mjs && pnpm -r test",
+    "build": "pnpm -r build",
+    "ship": "pnpm -C apps/web build && firebase deploy --only hosting --project solvingclub-cw-management",
+    "ship:all": "pnpm -r build && firebase deploy --only firestore:rules,firestore:indexes,storage,functions,hosting --project solvingclub-cw-management"
   },
   "devDependencies": {
     "firebase-tools": "^13.0.0",
