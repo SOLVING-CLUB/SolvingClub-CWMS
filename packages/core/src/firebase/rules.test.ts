@@ -61,6 +61,10 @@ describe("member rule behavior", () => {
       await setDoc(doc(ctx.firestore(), "tasks/t2"), { ...task, assigneeUid: "someone-else" });
     });
     await assertFails(updateDoc(doc(member, "tasks/t2"), { status: "done" }));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), "applications/a1"), { status: "archived" });
+    });
+    await assertFails(setDoc(doc(member, "tasks/archived-application"), { ...task, title: "Should not start" }));
   });
 
   it("requires a complete, well-formed invoice document from admins", async () => {

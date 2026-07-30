@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import {
-  subscribeTasks, createTask, updateTask, subscribeMembers, subscribeApplication, updateApplication,
-  type Task, type Member, type TaskStatus, type Application,
+  subscribeTasks, createTask, updateTask, subscribeMembers, subscribeApplication, subscribeClient, subscribeProject, updateApplication,
+  type Task, type Member, type TaskStatus, type Application, type Client, type Project,
 } from "@solvingclub/core";
 import { db } from "../db";
 import { fb } from "../firebase";
@@ -47,6 +47,8 @@ export function TasksPage() {
   const location = useLocation();
   const { applicationId = "", clientId = "" } = useParams();
   const [application, setApplication] = useState<Application | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
@@ -69,6 +71,11 @@ export function TasksPage() {
 
   useEffect(() => subscribeMembers(db, setMembers, () => setLoadError(true)), []);
   useEffect(() => subscribeApplication(db, applicationId, setApplication, () => setLoadError(true)), [applicationId]);
+  useEffect(() => subscribeClient(db, clientId, setClient, () => setLoadError(true)), [clientId]);
+  useEffect(() => {
+    if (!application?.projectId) { setProject(null); return; }
+    return subscribeProject(db, application.projectId, setProject, () => setLoadError(true));
+  }, [application?.projectId]);
   useEffect(() => {
     setLoading(true); setLoadError(false);
     return subscribeTasks(db, {
@@ -111,12 +118,17 @@ export function TasksPage() {
 
   return <div className="content-stack application-tasks-page">
     <Link to={location.pathname.startsWith("/applications/") ? "/applications" : `/clients/${clientId}`} className="back-link">← {location.pathname.startsWith("/applications/") ? "Applications" : "Client workspace"}</Link>
-    <PageHeader eyebrow={application?.type ?? "Application"} title={application?.name ?? "Delivery tasks"} description={application?.description ?? "Plan, assign, and discuss delivery work."}
+    {location.pathname.startsWith("/applications/") && <nav className="workspace-breadcrumb" aria-label="Application location">
+      <Link to={`/clients/${clientId}`}>{client?.name ?? "Client"}</Link><span aria-hidden="true">/</span>
+      {project ? <Link to={`/projects/${project.id}`}>{project.name}</Link> : <span>Project</span>}<span aria-hidden="true">/</span>
+      <strong>{application?.name ?? "Application"}</strong>
+    </nav>}
+    <PageHeader eyebrow={project?.name ?? application?.type ?? "Application"} title={application?.name ?? "Delivery tasks"} description={application?.description ?? "Plan, assign, and discuss delivery work."}
       actions={application ? <><StatusTag tone={application.status === "active" ? "done" : "neutral"}>{application.status}</StatusTag>{admin && <Button variant="outline" size="sm" onPress={openApplicationEditor}><Pencil /> Edit application</Button>}</> : undefined} />
     {loadError && <div className="data-error" role="alert"><CircleAlert /> Delivery work could not be synchronized. Refresh the page to retry.</div>}
     {actionError && <div className="data-error" role="alert"><CircleAlert /> {actionError}</div>}
 
-    {application && <TaskForm members={members} fixedAssigneeUid={admin ? undefined : session.uid} onSubmit={async (values) => {
+    {application && application.status === "active" && project?.status === "active" && <TaskForm members={members} fixedAssigneeUid={admin ? undefined : session.uid} onSubmit={async (values) => {
       const assigneeUid = resolveTaskAssignee(admin, session.uid, values.assigneeUid);
       await createTask(db, {
         applicationId, projectId: application.projectId, clientId, createdBy: fb.auth.currentUser?.uid ?? "unknown",
@@ -124,6 +136,7 @@ export function TasksPage() {
         ...(assigneeUid ? { assigneeUid } : {}), ...(values.dueDate ? { dueDate: values.dueDate } : {}),
       });
     }} />}
+    {application && (application.status === "archived" || project?.status === "archived") && <div className="archive-notice" role="status"><CircleAlert /> This delivery workspace is archived. Existing tasks remain available, but new tasks are paused until it is reactivated.</div>}
 
     <div className="filter-bar task-filter-bar"><Filter />
       <NativeSelect aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "")}><NativeSelectOption value="">All statuses</NativeSelectOption>{STATUSES.map((status) => <NativeSelectOption key={status} value={status}>{status.replace("_", " ")}</NativeSelectOption>)}</NativeSelect>

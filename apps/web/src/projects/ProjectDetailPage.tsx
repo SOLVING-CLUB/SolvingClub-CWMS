@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { subscribeClient, subscribeProject, subscribeTasks, updateProject, type Client, type Project, type Task } from "@solvingclub/core";
-import { ArrowLeft, CalendarClock, CheckCircle2, CircleAlert, FileText, FolderKanban, ListTodo, Pencil } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, CheckCircle2, CircleAlert, FileText, FolderKanban, ListTodo, Pencil } from "lucide-react";
 import { db } from "../db";
 import { PageHeader } from "../ui/PageHeader";
 import { ProjectApplications } from "./ProjectApplications";
@@ -15,6 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { PriorityBadge } from "../ui/PrioritySelect";
+
+const TASK_STATUS_TONE = { todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done" } as const;
 
 export function ProjectDetailPage() {
   const session = useSession();
@@ -49,6 +52,16 @@ export function ProjectDetailPage() {
     const overdue = tasks.filter((task) => task.status !== "done" && task.dueDate && task.dueDate < now).length;
     return { open, completed, blocked, overdue };
   }, [tasks]);
+  const deliveryQueue = useMemo(() => {
+    const statusRank = { blocked: 0, in_progress: 1, todo: 2, done: 3 } as const;
+    return [...tasks].sort((left, right) => {
+      const statusDifference = statusRank[left.status] - statusRank[right.status];
+      if (statusDifference) return statusDifference;
+      const priorityDifference = left.priority - right.priority;
+      if (priorityDifference) return priorityDifference;
+      return (left.dueDate ?? Number.MAX_SAFE_INTEGER) - (right.dueDate ?? Number.MAX_SAFE_INTEGER);
+    }).slice(0, 5);
+  }, [tasks]);
 
   function openEditor() {
     if (!project) return;
@@ -76,8 +89,19 @@ export function ProjectDetailPage() {
       <div className={delivery.blocked ? "risk" : ""}><span>Blocked</span><strong>{delivery.blocked}</strong><small><CircleAlert /> Needs attention</small></div>
       <div className={delivery.overdue ? "risk" : ""}><span>Overdue</span><strong>{delivery.overdue}</strong><small><CalendarClock /> Past deadline</small></div>
     </section>
+    <section className="project-delivery-queue" aria-labelledby="project-delivery-queue-title">
+      <header><div><span>Delivery queue</span><h2 id="project-delivery-queue-title">Work that needs attention</h2></div><Link to="/work">Open all work <ArrowRight /></Link></header>
+      {deliveryQueue.length ? <div className="project-delivery-rows">
+        {deliveryQueue.map((task) => <Link key={task.id} to={`/applications/${task.clientId}/${task.applicationId}`} className={`project-delivery-row${task.status === "blocked" ? " blocked" : ""}`}>
+          <div><strong>{task.title}</strong><span>{task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "No deadline"}</span></div>
+          <PriorityBadge value={task.priority} compact />
+          <StatusTag tone={TASK_STATUS_TONE[task.status]}>{task.status.replace("_", " ")}</StatusTag>
+          <ArrowRight aria-hidden="true" />
+        </Link>)}
+      </div> : <p className="project-delivery-empty">No delivery tasks yet. Tasks will appear here as applications begin work.</p>}
+    </section>
     <div className="client-detail-grid">
-      <section className="project-column"><div className="section-heading"><div><h2>Applications</h2><p>Delivery workstreams in this project.</p></div></div><ProjectApplications projectId={project.id} clientId={project.clientId} canEdit={editable} /></section>
+      <section className="project-column"><div className="section-heading"><div><h2>Applications</h2><p>Delivery workstreams in this project.</p></div></div><ProjectApplications projectId={project.id} clientId={project.clientId} canEdit={editable && project.status === "active"} /></section>
       <aside className="client-context"><Card><CardHeader className="border-b"><CardTitle><FileText /> Project files</CardTitle></CardHeader><CardContent><Documents ownerType="project" ownerId={project.id} clientId={project.clientId} canEdit={editable} /></CardContent></Card></aside>
     </div>
     <Dialog isOpen={editing} onOpenChange={setEditing}>

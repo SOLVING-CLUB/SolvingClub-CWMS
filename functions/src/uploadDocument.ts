@@ -1,49 +1,26 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 import { db, storage, assertMember } from "./admin.js";
-import { ensureFolderPath, uploadFile, driveSaKeyJson, driveRootFolderId, driveShareWith } from "./drive.js";
-
-const ownerTypeSchema = z.enum(["client", "project", "application", "task"]);
+import { accessLevelSchema, ownerTypeSchema, resolveDocumentFolder } from "./documentFolders.js";
+import {
+  DriveConfigurationError,
+  ensureFolderPath,
+  uploadFile,
+  driveOauthClientId,
+  driveOauthClientSecret,
+  driveTokenCipherKey,
+} from "./drive.js";
+import { isOwnedStagingPath } from "./uploadStaging.js";
 
 const inputSchema = z.object({
-  storagePath: z.string().min(1),
-  fileName: z.string().min(1),
-  mimeType: z.string().min(1),
-  label: z.string().min(1),
+  storagePath: z.string().min(1).max(512),
+  fileName: z.string().min(1).max(240),
+  mimeType: z.string().min(1).max(255),
+  label: z.string().min(1).max(240),
+  accessLevel: accessLevelSchema,
   ownerType: ownerTypeSchema,
-  ownerId: z.string().min(1),
+  ownerId: z.string().min(1).max(256),
 });
-
-/** client/project/application names from root to the owner's folder, in order. */
-async function resolveFolderNames(
-  ownerType: z.infer<typeof ownerTypeSchema>, ownerId: string,
-): Promise<{ names: string[]; clientId: string }> {
-  if (ownerType === "client") {
-    const snap = await db.doc(`clients/${ownerId}`).get();
-    if (!snap.exists) throw new HttpsError("not-found", "Client not found.");
-    return { names: [snap.get("name")], clientId: ownerId };
-  }
-  if (ownerType === "project") {
-    const snap = await db.doc(`projects/${ownerId}`).get();
-    if (!snap.exists) throw new HttpsError("not-found", "Project not found.");
-    const clientId = snap.get("clientId") as string;
-    const client = await db.doc(`clients/${clientId}`).get();
-    return { names: [client.get("name"), snap.get("name")], clientId };
-  }
-  // application or task: task files are attached under their application's folder.
-  const appId = ownerType === "task"
-    ? ((await db.doc(`tasks/${ownerId}`).get()).get("applicationId") as string)
-    : ownerId;
-  const appSnap = await db.doc(`applications/${appId}`).get();
-  if (!appSnap.exists) throw new HttpsError("not-found", "Application not found.");
-  const projectId = appSnap.get("projectId") as string;
-  const clientId = appSnap.get("clientId") as string;
-  const [project, client] = await Promise.all([
-    db.doc(`projects/${projectId}`).get(),
-    db.doc(`clients/${clientId}`).get(),
-  ]);
-  return { names: [client.get("name"), project.get("name"), appSnap.get("name")], clientId };
-}
 
 /**
  * Moves a member's staged upload (Firebase Storage) into the org's Drive
@@ -52,16 +29,16 @@ async function resolveFolderNames(
  * in staging.
  */
 export const uploadDocument = onCall(
-  { invoker: "public", secrets: [driveSaKeyJson, driveRootFolderId, driveShareWith] },
+  { invoker: "public", secrets: [driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey] },
   async (request) => {
     await assertMember(request.auth?.uid);
     const uid = request.auth!.uid;
 
     const parsed = inputSchema.safeParse(request.data);
     if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid upload details.");
-    const { storagePath, fileName, mimeType, label, ownerType, ownerId } = parsed.data;
+    const { storagePath, fileName, mimeType, label, accessLevel, ownerType, ownerId } = parsed.data;
 
-    if (storagePath !== `staging/${uid}/${fileName}`) {
+    if (!isOwnedStagingPath(uid, storagePath)) {
       throw new HttpsError("permission-denied", "You may only finalize your own staged upload.");
     }
 
@@ -71,21 +48,44 @@ export const uploadDocument = onCall(
     if (!exists) throw new HttpsError("not-found", "Staged file not found — upload may have failed.");
 
     try {
-      const { names, clientId } = await resolveFolderNames(ownerType, ownerId);
+      const { names, clientId } = await resolveDocumentFolder(ownerType, ownerId);
+      if (ownerType === "workspace" && accessLevel !== "internal") {
+        throw new HttpsError("failed-precondition", "Workspace management files are internal only.");
+      }
       const folderId = await ensureFolderPath(names);
       const [content] = await file.download();
-      const { id: driveFileId, url } = await uploadFile(folderId, fileName, mimeType, content);
+      const { id: driveFileId, url } = await uploadFile({
+        folderId,
+        fileName,
+        mimeType,
+        content,
+      });
 
       const createdAt = Date.now();
       const docRef = await db.collection("documents").add({
         kind: "managed", label, url, driveFileId, mimeType,
+        accessLevel,
         ownerType, ownerId, clientId, uploadedBy: uid, createdAt,
       });
 
       return {
         id: docRef.id, kind: "managed", label, url, driveFileId, mimeType,
+        accessLevel,
         ownerType, ownerId, clientId, uploadedBy: uid, createdAt,
       };
+    } catch (cause) {
+      const error = cause as { code?: number; message?: string; response?: { status?: number } };
+      console.error("Managed Drive upload failed", {
+        ownerType, ownerId, code: error.code ?? error.response?.status, message: error.message,
+      });
+      if (cause instanceof HttpsError) throw cause;
+      if (cause instanceof DriveConfigurationError) {
+        throw new HttpsError("failed-precondition", "Google Drive storage is not configured yet. Connect a Google Drive account in CWMS storage settings or attach a link instead.");
+      }
+      if (error.code === 403 || error.code === 404 || error.response?.status === 403 || error.response?.status === 404) {
+        throw new HttpsError("failed-precondition", "The managed Drive folder is not accessible to CWMS. Reconnect Google Drive or check the selected folder.");
+      }
+      throw new HttpsError("unavailable", "Managed Drive is temporarily unavailable. Please try again or attach a link.");
     } finally {
       await file.delete().catch((err) => console.warn(`Failed to remove staged file ${storagePath}:`, err));
     }

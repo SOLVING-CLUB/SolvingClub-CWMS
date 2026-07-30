@@ -94,7 +94,10 @@ service cloud.firestore {
     }
 
     function validDocumentOwner(data) {
-      return (data.ownerType == 'client'
+      return (data.ownerType == 'workspace'
+          && data.ownerId == '__workspace__'
+          && data.clientId == '__workspace__')
+        || (data.ownerType == 'client'
           && data.ownerId == data.clientId
           && exists(/databases/$(database)/documents/clients/$(data.clientId)))
         || (data.ownerType == 'project'
@@ -106,6 +109,32 @@ service cloud.firestore {
         || (data.ownerType == 'task'
           && exists(/databases/$(database)/documents/tasks/$(data.ownerId))
           && get(/databases/$(database)/documents/tasks/$(data.ownerId)).data.clientId == data.clientId);
+    }
+
+    // Document records can be created through two distinct paths: a member's
+    // validated external link, or the server-side Drive handoff. Keep both
+    // shapes explicit so users cannot smuggle arbitrary fields into a shared
+    // client document record.
+    function validDocumentData(data) {
+      return data.keys().hasOnly(['kind', 'label', 'url', 'driveFileId', 'mimeType', 'accessLevel', 'ownerType', 'ownerId', 'clientId', 'uploadedBy', 'createdAt'])
+        && data.keys().hasAll(['kind', 'label', 'url', 'accessLevel', 'ownerType', 'ownerId', 'clientId', 'uploadedBy', 'createdAt'])
+        && data.kind in ['managed', 'linked']
+        && data.label is string && data.label.size() > 0 && data.label.size() <= 240
+        && data.url is string && data.url.size() <= 2000 && data.url.matches('https?://.+')
+        && data.accessLevel in ['internal', 'client']
+        && data.ownerType in ['workspace', 'client', 'project', 'application', 'task']
+        && data.ownerId is string && data.ownerId.size() > 0
+        && data.clientId is string && data.clientId.size() > 0
+        && data.uploadedBy is string && data.uploadedBy.size() > 0
+        && data.createdAt is number
+        && ((data.ownerType == 'workspace' && data.accessLevel == 'internal')
+            || (data.ownerType != 'workspace'))
+        && ((data.kind == 'linked'
+              && !data.keys().hasAny(['driveFileId', 'mimeType']))
+            || (data.kind == 'managed'
+              && data.keys().hasAll(['driveFileId', 'mimeType'])
+              && data.driveFileId is string && data.driveFileId.size() > 0 && data.driveFileId.size() <= 256
+              && data.mimeType is string && data.mimeType.size() > 0 && data.mimeType.size() <= 255));
     }
 
     // Org members are internal-only.
@@ -144,7 +173,8 @@ service cloud.firestore {
         && validApplicationData(request.resource.data)
         && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
         && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.clientId
-          == request.resource.data.clientId;
+          == request.resource.data.clientId
+        && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.status == 'active';
       allow update: if isOwnerOrAdmin()
         && validApplicationData(request.resource.data)
         && request.resource.data.clientId == resource.data.clientId
@@ -161,7 +191,9 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.projectId
           == request.resource.data.projectId
         && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.clientId
-          == request.resource.data.clientId;
+          == request.resource.data.clientId
+        && get(/databases/$(database)/documents/applications/$(request.resource.data.applicationId)).data.status == 'active'
+        && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.status == 'active';
       allow delete: if isOwnerOrAdmin();
       // Admins manage any task; members edit only tasks assigned to themselves.
       allow update: if validTaskData(request.resource.data)
@@ -178,13 +210,14 @@ service cloud.firestore {
     }
 
     match /documents/{id} {
-      allow read: if isMember() || ownsClient(resource.data.clientId);
+      allow read: if isMember()
+        || (ownsClient(resource.data.clientId) && resource.data.accessLevel == 'client');
       allow create: if isOwnerOrAdmin()
         && request.resource.data.uploadedBy == request.auth.uid
-        && request.resource.data.url is string
-        && request.resource.data.url.matches('https?://.*')
+        && validDocumentData(request.resource.data)
         && validDocumentOwner(request.resource.data);
       allow update: if isOwnerOrAdmin()
+        && validDocumentData(request.resource.data)
         && request.resource.data.clientId == resource.data.clientId
         && request.resource.data.ownerType == resource.data.ownerType
         && request.resource.data.ownerId == resource.data.ownerId

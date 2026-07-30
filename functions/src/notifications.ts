@@ -1,8 +1,8 @@
 import { onDocumentUpdated, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { db } from "./admin.js";
 
-function clientApplicationLink(clientId: string, applicationId: string) {
-  return `/clients/${clientId}/apps/${applicationId}`;
+function clientDeliveryLink() {
+  return "/#delivery";
 }
 
 function memberApplicationLink(clientId: string, applicationId: string) {
@@ -19,7 +19,7 @@ export const onTaskCreated = onDocumentCreated("tasks/{taskId}", async (event) =
     recipientType: "client", recipientId: task.clientId,
     title: `New task: “${task.title}”`,
     body: "A delivery task was added to your workspace.",
-    link: clientApplicationLink(task.clientId, task.applicationId),
+    link: clientDeliveryLink(),
     read: false, createdAt: Date.now(),
   });
 
@@ -74,7 +74,7 @@ export const onInvoiceStatusChanged = onDocumentUpdated("invoices/{invoiceId}", 
     recipientType: "client", recipientId: after.clientId,
     title: `Invoice ${after.number} ${label}`,
     body: total ? `Invoice total: ${total}. Open billing to review the details.` : "Open billing to review the details.",
-    link: `/clients/${after.clientId}`,
+    link: "/#invoices",
     read: false, createdAt: Date.now(),
   });
 });
@@ -91,7 +91,7 @@ export const onTaskStatusChanged = onDocumentUpdated("tasks/{taskId}", async (ev
     recipientId: after.clientId,
     title: `Task “${after.title}” is now ${statusLabel}`,
     body: "Open the delivery workspace to review the latest status and conversation.",
-    link: clientApplicationLink(after.clientId, after.applicationId),
+    link: clientDeliveryLink(),
     read: false,
     createdAt: Date.now(),
   });
@@ -105,7 +105,7 @@ export const onCommentCreated = onDocumentCreated("comments/{commentId}", async 
   const taskSnap = await db.doc(`tasks/${data.taskId}`).get();
   const taskTitle = taskSnap.exists ? (taskSnap.get("title") as string) : "a task";
   const applicationId = taskSnap.exists ? (taskSnap.get("applicationId") as string | undefined) : undefined;
-  const clientTaskLink = applicationId ? clientApplicationLink(data.clientId, applicationId) : `/clients/${data.clientId}`;
+  const clientTaskLink = applicationId ? clientDeliveryLink() : "/#overview";
   const memberTaskLink = applicationId ? memberApplicationLink(data.clientId, applicationId) : `/clients/${data.clientId}`;
 
   if (data.authorType === "client") {

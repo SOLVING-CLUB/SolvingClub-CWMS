@@ -1,11 +1,11 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 import { assertOwnerOrAdmin, db } from "./admin.js";
-import { deleteDriveFile, driveSaKeyJson } from "./drive.js";
+import { deleteDriveFile, driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey } from "./drive.js";
 
 const schema = z.object({ id: z.string().min(1).max(200) });
 
-export const deleteDocument = onCall({ invoker: "public", secrets: [driveSaKeyJson] }, async (request) => {
+export const deleteDocument = onCall({ invoker: "public", secrets: [driveOauthClientId, driveOauthClientSecret, driveTokenCipherKey] }, async (request) => {
   await assertOwnerOrAdmin(request.auth?.uid);
   const parsed = schema.safeParse(request.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid document id.");
