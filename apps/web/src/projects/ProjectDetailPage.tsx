@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { subscribeClient, subscribeProject, subscribeTasks, updateProject, type Client, type Project, type Task } from "@solvingclub/core";
+import { PROJECT_TYPE_LABELS, subscribeClient, subscribeProject, subscribeTasks, updateProject, type Client, type Project, type ProjectType, type Task } from "@solvingclub/core";
 import { ArrowLeft, ArrowRight, CalendarClock, CheckCircle2, CircleAlert, FileText, FolderKanban, ListTodo, Pencil } from "lucide-react";
 import { db } from "../db";
 import { PageHeader } from "../ui/PageHeader";
@@ -18,6 +18,10 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { PriorityBadge } from "../ui/PrioritySelect";
 
 const TASK_STATUS_TONE = { todo: "neutral", in_progress: "progress", blocked: "blocked", done: "done" } as const;
+const PROJECT_TYPE_ORDER: ProjectType[] = [
+  "web_app", "mobile_app", "desktop_app", "website",
+  "api_service", "ai_ml", "data_platform", "automation", "other",
+];
 
 export function ProjectDetailPage() {
   const session = useSession();
@@ -31,6 +35,9 @@ export function ProjectDetailPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"active" | "archived">("active");
+  const [type, setType] = useState<ProjectType | "">("");
+  const [startDate, setStartDate] = useState("");
+  const [stack, setStack] = useState("");
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -65,12 +72,27 @@ export function ProjectDetailPage() {
 
   function openEditor() {
     if (!project) return;
-    setName(project.name); setDescription(project.description ?? ""); setStatus(project.status); setEditError(null); setEditing(true);
+    setName(project.name); setDescription(project.description ?? ""); setStatus(project.status);
+    setType(project.type ?? "");
+    // <input type="date"> wants YYYY-MM-DD in UTC, matching how it was stored.
+    setStartDate(project.startDate ? new Date(project.startDate).toISOString().slice(0, 10) : "");
+    setStack((project.techStack ?? []).join(", "));
+    setEditError(null); setEditing(true);
   }
   async function saveProject() {
     if (!project || !name.trim()) return;
+    const parsedStart = startDate ? Date.parse(`${startDate}T00:00:00Z`) : NaN;
+    const stackEntries = stack.split(",").map((entry) => entry.trim()).filter(Boolean).slice(0, 24);
     setSaving(true); setEditError(null);
-    try { await updateProject(db, project.id, { name, description: description.trim() || null, status }); setEditing(false); }
+    try {
+      await updateProject(db, project.id, {
+        name, description: description.trim() || null, status,
+        type: type || null,
+        startDate: Number.isNaN(parsedStart) ? null : parsedStart,
+        techStack: stackEntries.length ? stackEntries : null,
+      });
+      setEditing(false);
+    }
     catch (cause) { setEditError(cause instanceof Error ? cause.message : "Project details could not be saved."); }
     finally { setSaving(false); }
   }
@@ -83,6 +105,13 @@ export function ProjectDetailPage() {
     <PageHeader eyebrow={client?.name ?? "Client project"} title={project.name} description={project.description ?? "Applications, delivery tasks, and project files in one focused workspace."}
       actions={<><StatusTag tone={project.status === "active" ? "done" : "neutral"}>{project.status}</StatusTag>{editable && <Button variant="outline" size="sm" onPress={openEditor}><Pencil /> Edit project</Button>}</>} />
     {error && <div className="data-error" role="alert"><CircleAlert /> Some project updates could not be loaded. Refresh to retry.</div>}
+    <section className="project-profile" aria-label="Project profile">
+      <div><span>Type</span><strong>{project.type ? PROJECT_TYPE_LABELS[project.type] : "Not specified"}</strong></div>
+      <div><span>Start date</span><strong>{project.startDate ? new Date(project.startDate).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "Not set"}</strong></div>
+      <div className="project-profile-stack"><span>Tech stack</span>{project.techStack?.length
+        ? <div className="stack-tags">{project.techStack.map((entry) => <span className="stack-tag" key={entry}>{entry}</span>)}</div>
+        : <strong>Not recorded</strong>}</div>
+    </section>
     <section className="project-delivery-summary" aria-label="Project delivery pulse">
       <div><span>Open work</span><strong>{delivery.open}</strong><small><ListTodo /> Active tasks</small></div>
       <div><span>Completed</span><strong>{delivery.completed}</strong><small><CheckCircle2 /> Delivered tasks</small></div>
@@ -109,6 +138,9 @@ export function ProjectDetailPage() {
       <div className="dialog-form project-edit-form">
         <div><Label htmlFor="project-name">Name</Label><Input id="project-name" autoFocus value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></div>
         <div><Label htmlFor="project-status">Status</Label><NativeSelect id="project-status" value={status} onChange={(event) => setStatus(event.target.value as "active" | "archived")}><NativeSelectOption value="active">Active</NativeSelectOption><NativeSelectOption value="archived">Archived</NativeSelectOption></NativeSelect></div>
+        <div><Label htmlFor="project-type">Project type</Label><NativeSelect id="project-type" value={type} onChange={(event) => setType(event.target.value as ProjectType | "")}><NativeSelectOption value="">Not specified</NativeSelectOption>{PROJECT_TYPE_ORDER.map((option) => <NativeSelectOption key={option} value={option}>{PROJECT_TYPE_LABELS[option]}</NativeSelectOption>)}</NativeSelect></div>
+        <div><Label htmlFor="project-start">Start date <span>Optional</span></Label><Input id="project-start" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
+        <div><Label htmlFor="project-stack">Tech stack <span>Comma separated</span></Label><Input id="project-stack" placeholder="React, Node, Postgres" value={stack} onChange={(event) => setStack(event.target.value)} /></div>
         <div><Label htmlFor="project-description">Description <span>Optional</span></Label><Textarea id="project-description" placeholder="Scope, delivery goals, or context…" value={description} maxLength={4000} onChange={(event) => setDescription(event.target.value)} /></div>
         {editError && <p className="form-error" role="alert">{editError}</p>}
       </div>

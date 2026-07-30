@@ -277,6 +277,26 @@ kbd svg { width: 10px; }
 .client-card footer svg { width: 13px; }
 .dialog-form { display: grid; gap: 14px; }
 .dialog-form > div { display: grid; gap: 5px; }
+/* Two fields side by side inside a dialog form; stacks on narrow screens. */
+.field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.field-row > div { display: grid; gap: 5px; }
+@media (max-width: 640px) { .field-row { grid-template-columns: minmax(0, 1fr); } }
+
+.stack-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.stack-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); color: var(--foreground); font-size: 10px; line-height: 1.7; }
+.stack-tag button { display: inline-flex; align-items: center; color: var(--muted-foreground); cursor: pointer; }
+.stack-tag button:hover { color: var(--destructive); }
+.stack-tag svg { width: 11px; height: 11px; }
+
+.entity-meta { color: var(--muted-foreground); font-size: 10px; }
+
+.project-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.project-profile > div { display: grid; gap: 4px; align-content: start; }
+.project-profile span { color: var(--muted-foreground); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.project-profile strong { font-size: 12px; }
+.project-profile-stack { grid-column: span 2; }
+@media (max-width: 640px) { .project-profile-stack { grid-column: auto; } }
+
 /* Same field rhythm as a dialog, used for full-page record forms. */
 .detail-form { display: grid; gap: 14px; }
 .detail-form > div { display: grid; gap: 5px; }

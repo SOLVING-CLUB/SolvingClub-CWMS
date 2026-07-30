@@ -33,6 +33,48 @@ describe("project & application data-access (as member)", () => {
     expect(all).toHaveLength(0);
   });
 
+  it("stores a project's type, start date, and tech stack under real rules", async () => {
+    const db = await memberDb("u1");
+    const startDate = Date.UTC(2026, 0, 15);
+    const created = await createProject(db, {
+      clientId: "c1", name: "Delivery app", type: "mobile_app",
+      startDate, techStack: ["React Native", "Firebase"],
+    });
+    expect(created.type).toBe("mobile_app");
+
+    const [stored] = await listProjectsByClient(db, "c1");
+    expect(stored.type).toBe("mobile_app");
+    expect(stored.startDate).toBe(startDate);
+    expect(stored.techStack).toEqual(["React Native", "Firebase"]);
+  });
+
+  it("can change and clear a project's type, start date, and tech stack", async () => {
+    const db = await memberDb("u1");
+    const project = await createProject(db, {
+      clientId: "c1", name: "Portal", type: "web_app", startDate: 1, techStack: ["React"],
+    });
+    await updateProject(db, project.id, { type: "desktop_app", techStack: ["Electron", "SQLite"] });
+    let [updated] = await listProjectsByClient(db, "c1");
+    expect(updated.type).toBe("desktop_app");
+    expect(updated.techStack).toEqual(["Electron", "SQLite"]);
+
+    await updateProject(db, project.id, { type: null, startDate: null, techStack: null });
+    [updated] = await listProjectsByClient(db, "c1");
+    expect(updated.type).toBeUndefined();
+    expect(updated.startDate).toBeUndefined();
+    expect(updated.techStack).toBeUndefined();
+  });
+
+  it("rejects an unknown project type and an oversized tech stack", async () => {
+    const db = await memberDb("u1");
+    await expect(createProject(db, {
+      clientId: "c1", name: "Bad type", type: "spaceship" as never,
+    })).rejects.toThrow();
+    await expect(createProject(db, {
+      clientId: "c1", name: "Too many", techStack: Array.from({ length: 25 }, (_, index) => `Tool ${index}`),
+    })).rejects.toThrow();
+  });
+
   it("creates and lists an application under a project", async () => {
     const db = await memberDb("u1");
     const project = await createProject(db, { clientId: "c1", name: "Platform" });

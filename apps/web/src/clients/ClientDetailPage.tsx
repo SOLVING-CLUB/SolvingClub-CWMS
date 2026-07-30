@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
-  subscribeProjectsByClient, createProject, updateProject, subscribeClient, subscribeApplicationsByClient, subscribeTasks,
-  type Project, type Client, type Application, type Task,
+  subscribeProjectsByClient, updateProject, subscribeClient, subscribeApplicationsByClient, subscribeTasks,
+  PROJECT_TYPE_LABELS, type Project, type Client, type Application, type Task,
 } from "@solvingclub/core";
+import { NewProjectDialog } from "../projects/NewProjectDialog";
 import { db } from "../db";
 import { Documents } from "../documents/Documents";
 import { InvoicesPanel } from "../invoices/InvoicesPanel";
@@ -29,9 +30,7 @@ export function ClientDetailPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [client, setClient] = useState<Client | null>(null);
-  const [name, setName] = useState("");
-  const [addingProject, setAddingProject] = useState(false);
-  const [projectError, setProjectError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [renaming, setRenaming] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [savingRename, setSavingRename] = useState(false);
@@ -42,18 +41,6 @@ export function ClientDetailPage() {
   useEffect(() => subscribeApplicationsByClient(db, clientId, setApplications, () => setWorkspaceError("Project applications could not be loaded. Refresh to try again.")), [clientId]);
   useEffect(() => subscribeTasks(db, { clientId }, setTasks, () => setWorkspaceError("Project tasks could not be loaded. Refresh to try again.")), [clientId]);
   useEffect(() => subscribeClient(db, clientId, setClient, () => setWorkspaceError("Client details could not be loaded. Refresh to try again.")), [clientId]);
-
-  async function onAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setAddingProject(true); setProjectError(null);
-    try {
-      await createProject(db, { clientId, name: name.trim() });
-      setName("");
-    } catch (cause) {
-      setProjectError(cause instanceof Error ? cause.message : "The project could not be created.");
-    } finally { setAddingProject(false); }
-  }
 
   function openRename(project: Project) {
     setRenaming(project); setRenameValue(project.name); setRenameError(null);
@@ -84,7 +71,7 @@ export function ClientDetailPage() {
       <div className="client-detail-grid">
       <section className="project-column" id="projects">
       <div className="section-heading"><div><h2>Projects</h2><p>Open a delivery stream to manage its applications, tasks, and files.</p></div></div>
-      {editable && <><form onSubmit={onAdd} className="quick-create"><Plus /><Input id="new-project" aria-label="Project name" placeholder="Create a project..." value={name} onChange={(e) => setName(e.target.value)} /><Button type="submit" size="sm" isDisabled={addingProject || !name.trim()}>{addingProject ? "Creating…" : "Create"}</Button></form>{projectError && <p className="form-error" role="alert">{projectError}</p>}</>}
+      {editable && <Button id="new-project" onPress={() => setCreatingProject(true)}><Plus /> New project</Button>}
       {projects.length === 0 && <EmptyState icon={<FolderKanban />} title="No projects yet" description="Create the first delivery stream for this client." imageSrc="/visuals/delivery-routing.jpg" imageAlt="Abstract delivery routing system" />}
       <div className="client-project-grid">{projects.map((project) => {
         const projectApplications = applications.filter((application) => application.projectId === project.id);
@@ -95,7 +82,7 @@ export function ClientDetailPage() {
         return <article className="client-project-card" key={project.id}>
           <Link className="client-project-open" to={`/projects/${project.id}`}>
             <span className="client-project-icon"><FolderKanban /></span>
-            <div className="client-project-copy"><div><StatusTag tone={project.status === "active" ? "done" : "neutral"}>{project.status}</StatusTag><span>{projectApplications.length} application{projectApplications.length === 1 ? "" : "s"}</span></div><strong>{project.name}</strong><p>{project.description ?? "Applications, tasks, and project files in one workspace."}</p></div>
+            <div className="client-project-copy"><div><StatusTag tone={project.status === "active" ? "done" : "neutral"}>{project.status}</StatusTag>{project.type && <span>{PROJECT_TYPE_LABELS[project.type]}</span>}<span>{projectApplications.length} application{projectApplications.length === 1 ? "" : "s"}</span></div><strong>{project.name}</strong><p>{project.description ?? "Applications, tasks, and project files in one workspace."}</p>{project.techStack?.length ? <p className="entity-meta">{project.techStack.join(" · ")}</p> : null}</div>
             <ArrowRight />
             <div className="client-project-progress"><span>{projectTasks.length ? `${complete} of ${projectTasks.length} tasks complete` : "No tasks yet"}{blocked ? ` · ${blocked} blocked` : ""}</span><i><b style={{ width: `${progress}%` }} /></i></div>
           </Link>
@@ -108,6 +95,7 @@ export function ClientDetailPage() {
       </aside>
       </div>
       <section className="billing-section" id="billing"><div className="section-heading"><div><h2>Billing</h2><p>Invoices and payment status.</p></div></div><InvoicesPanel clientId={clientId} canEdit={editable} /></section>
+      <NewProjectDialog isOpen={creatingProject} onOpenChange={setCreatingProject} clientId={clientId} />
       <Dialog isOpen={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
         <DialogHeader><DialogTitle>Rename project</DialogTitle><DialogDescription>Use a short name your team and client will recognize.</DialogDescription></DialogHeader>
         <div className="dialog-form"><div><Label htmlFor="rename-project">Project name</Label><Input id="rename-project" autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)} /></div>{renameError && <p className="form-error" role="alert">{renameError}</p>}</div>

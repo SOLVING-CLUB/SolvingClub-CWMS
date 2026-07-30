@@ -82,6 +82,25 @@ describe("member rule behavior", () => {
     await assertFails(setDoc(doc(owner, "invoices/i4"), { ...invoice, lineItems: [] }));
   });
 
+  it("pins the project shape: known type, numeric start date, bounded stack, no extra keys", async () => {
+    await seedMember("owner", "owner");
+    await seedHierarchy();
+    const env = await getTestEnv();
+    const owner = env.authenticatedContext("owner").firestore();
+    const project = { clientId: "c1", name: "Portal", status: "active", createdAt: 1 };
+
+    await assertSucceeds(setDoc(doc(owner, "projects/ok"), {
+      ...project, type: "web_app", startDate: 1767225600000, techStack: ["React", "Firebase"],
+    }));
+    await assertFails(setDoc(doc(owner, "projects/bad-type"), { ...project, type: "spaceship" }));
+    await assertFails(setDoc(doc(owner, "projects/bad-date"), { ...project, startDate: "2026-01-15" }));
+    await assertFails(setDoc(doc(owner, "projects/bad-stack"), { ...project, techStack: "React" }));
+    await assertFails(setDoc(doc(owner, "projects/huge-stack"), {
+      ...project, techStack: Array.from({ length: 25 }, (_, index) => `Tool ${index}`),
+    }));
+    await assertFails(setDoc(doc(owner, "projects/smuggled"), { ...project, internalRate: 500 }));
+  });
+
   it("denies disabled members", async () => {
     await seedMember("disabled", "member", "disabled");
     const env = await getTestEnv();

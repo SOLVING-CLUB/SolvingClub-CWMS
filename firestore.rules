@@ -54,13 +54,23 @@ service cloud.firestore {
     }
 
     function validProjectData(data) {
-      return data.clientId is string
+      return data.keys().hasOnly(['clientId', 'name', 'description', 'status', 'type', 'startDate', 'techStack', 'driveFolderId', 'createdAt'])
+        && data.keys().hasAll(['clientId', 'name', 'status', 'createdAt'])
+        && data.clientId is string
         && data.name is string
         && data.name.size() > 0
         && data.name.size() <= 160
         && (!(data.keys().hasAny(['description']))
           || (data.description is string && data.description.size() <= 4000))
         && data.status in ['active', 'archived']
+        && (!(data.keys().hasAny(['type']))
+          || data.type in ['web_app', 'mobile_app', 'desktop_app', 'website', 'api_service', 'ai_ml', 'data_platform', 'automation', 'other'])
+        && (!(data.keys().hasAny(['startDate'])) || data.startDate is number)
+        // Rules cannot inspect list elements; bound the size and let the zod
+        // model enforce that every entry is a short string.
+        && (!(data.keys().hasAny(['techStack']))
+          || (data.techStack is list && data.techStack.size() <= 24))
+        && (!(data.keys().hasAny(['driveFolderId'])) || data.driveFolderId is string)
         && data.createdAt is number;
     }
 
